@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCR-PS — Números de Factura</title>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>
+  :root {
+    --fondo: #ffffff;
+    --panel: #ffffff;
+    --panel-alt: #f3f1fb;
+    --borde: #e6e1f7;
+    --texto: #1a1533;
+    --texto-tenue: #6f6690;
+    --acento: #7c5cff;
+    --acento-oscuro: #5b3fd6;
+    --acento-clara: #efeafd;
+    --negativa: #e0403e;
+    --positiva: #1fa855;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--panel-alt);
+    color: var(--texto);
+  }
+  header {
+    background: linear-gradient(135deg, var(--acento-oscuro), var(--acento));
+    color: white;
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  header h1 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+  header .subtitulo { font-size: 11.5px; opacity: 0.8; font-weight: 400; margin-left: 2px; }
+  a.enlace-modulo {
+    color: rgba(255,255,255,0.75);
+    font-size: 12px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  a.enlace-modulo:hover { color: white; }
+  #estado-ocr { font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+  #enlace-historico {
+    font-size: 12.5px;
+    color: white;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.16);
+    border-radius: 999px;
+    padding: 5px 12px;
+    transition: background 0.15s ease;
+  }
+  #enlace-historico:hover { background: rgba(255,255,255,0.28); }
+  #enlace-historico i { width: 14px; height: 14px; }
+  #boton-reiniciar-historico {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.16);
+    color: white;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  #boton-reiniciar-historico:hover { background: var(--negativa); }
+  #boton-reiniciar-historico i { width: 14px; height: 14px; }
+  #boton-cargar-servidor {
+    font-size: 12.5px;
+    color: white;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.16);
+    border-radius: 999px;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  #boton-cargar-servidor:hover { background: rgba(255,255,255,0.28); }
+  #boton-cargar-servidor:disabled { opacity: 0.55; cursor: default; }
+  #boton-cargar-servidor i { width: 14px; height: 14px; }
+  #contador-pendientes-carga { font-weight: 700; }
+  #punto-ocr { width: 8px; height: 8px; border-radius: 50%; background: #ffb3b0; }
+  #punto-ocr.ok { background: #b6f0a1; }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+
+  #zona-carga {
+    border: 2px dashed var(--borde);
+    border-radius: 12px;
+    padding: 36px 30px;
+    text-align: center;
+    color: var(--texto-tenue);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  #zona-carga.arrastrando { border-color: var(--acento); background: var(--acento-clara); }
+  #zona-carga svg { width: 36px; height: 36px; margin-bottom: 8px; opacity: 0.55; color: var(--acento-oscuro); }
+  #entrada-archivo { display: none; }
+
+  button {
+    background: var(--acento);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-size: 13.5px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  button:hover { filter: brightness(1.06); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secundario {
+    background: var(--panel-alt);
+    color: var(--texto);
+    border: 1px solid var(--borde);
+  }
+  button.exito { background: var(--positiva); }
+
+  #mensaje-carga { font-size: 13px; margin-top: 10px; color: var(--texto-tenue); }
+
+  #barra-progreso {
+    display: none;
+    height: 6px;
+    background: var(--panel-alt);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  #barra-progreso.visible { display: block; }
+  #barra-progreso-relleno {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--acento-oscuro), var(--acento));
+    border-radius: 999px;
+    transition: width 0.35s ease;
+  }
+
+  .barra-acciones { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .contador-resultados { font-size: 12.5px; color: var(--texto-tenue); margin-left: auto; }
+
+  .girando { animation: girar 1s linear infinite; }
+  @keyframes girar { to { transform: rotate(360deg); } }
+
+  .rejilla-tarjetas {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 12px;
+  }
+  .tarjeta-numero {
+    background: var(--panel-alt);
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    padding: 16px;
+    animation: aparecer 0.3s ease;
+    position: relative;
+  }
+  @keyframes aparecer {
+    from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .tarjeta-numero .etiqueta-pagina {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--texto-tenue);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .input-numero-grande {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--acento-oscuro);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    padding: 2px 0;
+    border-radius: 6px;
+  }
+  .input-numero-grande:hover, .input-numero-grande:focus { background: white; outline: 1px solid var(--acento); }
+  .input-numero-grande.vacio { color: var(--negativa); font-size: 15px; font-weight: 600; }
+  .tarjeta-numero .archivo-origen {
+    font-size: 11px;
+    color: var(--texto-tenue);
+    margin-top: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tarjeta-numero.fila-error {
+    background: rgba(224,64,62,0.06);
+    border-color: rgba(224,64,62,0.3);
+  }
+  .tarjeta-numero .texto-error { font-size: 12px; color: var(--negativa); }
+
+  .chip-motor {
+    display: inline-block;
+    font-size: 9.5px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--acento-clara);
+    color: var(--acento-oscuro);
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .chip-motor.respaldo { background: rgba(224,64,62,0.1); color: var(--negativa); }
+
+  .bloque-proveedor { position: relative; margin-top: 10px; }
+  .input-proveedor {
+    width: 100%;
+    border: 1px solid var(--borde);
+    background: white;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: var(--texto);
+  }
+  .input-proveedor:focus { outline: 1px solid var(--acento); }
+  .input-proveedor::placeholder { color: var(--texto-tenue); }
+  .resultados-proveedor {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    background: white;
+    border: 1px solid var(--borde);
+    border-radius: 8px;
+    margin-top: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+    box-shadow: 0 6px 18px rgba(30,20,60,0.14);
+  }
+  .resultados-proveedor.visible { display: block; }
+  .item-proveedor {
+    padding: 7px 10px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--panel-alt);
+  }
+  .item-proveedor:last-child { border-bottom: none; }
+  .item-proveedor:hover { background: var(--acento-clara); }
+  .item-proveedor .nombre-prov { font-size: 12px; font-weight: 600; color: var(--texto); }
+  .item-proveedor .detalle-prov { font-size: 10.5px; color: var(--texto-tenue); }
+  .item-proveedor.sin-resultados { cursor: default; color: var(--texto-tenue); font-size: 12px; }
+  .item-proveedor.sin-resultados:hover { background: none; }
+  .proveedor-elegido {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(31,168,85,0.08);
+    border: 1px solid rgba(31,168,85,0.3);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 11.5px;
+  }
+  .proveedor-elegido i.icono-check { width: 13px; height: 13px; color: var(--positiva); flex-shrink: 0; }
+  .proveedor-elegido .texto-elegido { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--texto); }
+  .proveedor-elegido .texto-elegido b { color: var(--positiva); }
+  .boton-quitar-proveedor {
+    background: none;
+    border: none;
+    padding: 2px;
+    cursor: pointer;
+    color: var(--texto-tenue);
+    display: inline-flex;
+  }
+  .boton-quitar-proveedor:hover { color: var(--negativa); }
+  .boton-quitar-proveedor i { width: 13px; height: 13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><i data-lucide="pill"></i> OCR-PS <span class="subtitulo">— números de factura para psicotrópicos</span></h1>
+  <div style="display:flex; align-items:center; gap:14px;">
+    <a class="enlace-modulo" href="/cotejo"><i data-lucide="list-checks"></i> Cotejo de lotes</a>
+    <a class="enlace-modulo" href="/menu"><i data-lucide="layout-grid"></i> Otros módulos</a>
+    <a href="/api/historico/descargar" id="enlace-historico" title="Descarga el Excel con todos los números guardados hasta ahora">
+      <i data-lucide="database"></i> Histórico: <span id="texto-historico">—</span>
+    </a>
+    <button id="boton-cargar-servidor" title="Sube al servidor las filas del histórico que ya revisaste y todavía no se habían cargado">
+      <i data-lucide="upload-cloud"></i> Cargar al servidor <span id="contador-pendientes-carga"></span>
+    </button>
+    <button id="boton-reiniciar-historico" title="Elimina el progreso acumulado del Excel histórico (queda un respaldo con fecha)">
+      <i data-lucide="trash-2"></i>
+    </button>
+    <div id="estado-ocr">
+      <span id="punto-ocr"></span>
+      <span id="texto-estado-ocr">verificando API de OCR…</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="panel">
+    <div id="zona-carga">
+      <i data-lucide="scan-line"></i>
+      <div><b>Arrastra las facturas</b> (foto o PDF), o haz clic para elegirlas.</div>
+      <div style="font-size:12px; margin-top:4px;">Un PDF de varias páginas cuenta como varias facturas — se lee el número de cada una. PNG, JPG, WEBP, BMP también. Máx. 30 MB.</div>
+      <input type="file" id="entrada-archivo" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp">
+    </div>
+    <div id="mensaje-carga"></div>
+    <div id="barra-progreso"><div id="barra-progreso-relleno"></div></div>
+  </div>
+
+  <div class="panel" id="panel-resultados" style="display:none;">
+    <div class="barra-acciones">
+      <button id="boton-copiar"><i data-lucide="copy"></i> Copiar todos los números</button>
+      <button id="boton-exportar" class="secundario"><i data-lucide="file-spreadsheet"></i> Exportar a Excel</button>
+      <button class="secundario" id="boton-nuevo"><i data-lucide="rotate-ccw"></i> Escanear otras facturas</button>
+      <span class="contador-resultados" id="contador-resultados"></span>
+    </div>
+    <div class="rejilla-tarjetas" id="rejilla-tarjetas"></div>
+  </div>
+</main>
+
+<script>
+let ultimosResultados = [];
+
+function refrescarIconos() { if (window.lucide) lucide.createIcons(); }
+
+async function verificarEstadoOCR() {
+  const punto = document.getElementById("punto-ocr");
+  const texto = document.getElementById("texto-estado-ocr");
+  try {
+    const respuesta = await fetch("/api/estado-ocr");
+    const datos = await respuesta.json();
+    if (datos.conectado) {
+      punto.classList.add("ok");
+      const respaldo = datos.detalle.respaldo ? ` · respaldo: ${datos.detalle.respaldo}` : "";
+      texto.textContent = `OCR conectado (modelo: ${datos.detalle.modelo_vision || "?"}${respaldo})`;
+    } else {
+      throw new Error(datos.error || "sin conexión");
+    }
+  } catch (error) {
+    punto.classList.remove("ok");
+    texto.textContent = "API de OCR no disponible";
+  }
+}
+
+async function actualizarContadorHistorico() {
+  const texto = document.getElementById("texto-historico");
+  const botonCargar = document.getElementById("boton-cargar-servidor");
+  try {
+    const respuesta = await fetch("/api/historico/estado");
+    const datos = await respuesta.json();
+    texto.textContent = datos.existe ? `${datos.filas} factura(s)` : "vacío todavía";
+
+    const pendientes = datos.filas_pendientes || 0;
+    const contadorPendientes = document.getElementById("contador-pendientes-carga");
+    if (contadorPendientes) contadorPendientes.textContent = pendientes > 0 ? `(${pendientes})` : "";
+    if (botonCargar) botonCargar.disabled = pendientes === 0;
+  } catch (error) {
+    texto.textContent = "?";
+  }
+}
+
+document.getElementById("boton-cargar-servidor").addEventListener("click", async () => {
+  const boton = document.getElementById("boton-cargar-servidor");
+  boton.disabled = true;
+  boton.innerHTML = `<i data-lucide="loader-circle" class="girando" style="width:13px;height:13px;"></i> Cargando…`;
+  refrescarIconos();
+  try {
+    const respuesta = await fetch("/api/historico/cargar_al_servidor", { method: "POST" });
+    const datos = await respuesta.json();
+    if (!respuesta.ok) throw new Error(datos.error || "No se pudo cargar al servidor");
+    boton.innerHTML = `<i data-lucide="check"></i> ${datos.filas_nuevas} nueva(s) cargada(s)`;
+    refrescarIconos();
+  } catch (error) {
+    alert(`Error: ${error.message}`);
+  } finally {
+    setTimeout(() => {
+      boton.innerHTML = `<i data-lucide="upload-cloud"></i> Cargar al servidor <span id="contador-pendientes-carga"></span>`;
+      refrescarIconos();
+      actualizarContadorHistorico();
+    }, 1800);
+  }
+});
+
+document.getElementById("boton-reiniciar-historico").addEventListener("click", async () => {
+  const texto = document.getElementById("texto-historico").textContent;
+  if (!confirm(`¿Eliminar el progreso del histórico (${texto})? Queda un respaldo con la fecha en /data, pero el contador vuelve a cero.`)) return;
+
+  const boton = document.getElementById("boton-reiniciar-historico");
+  boton.disabled = true;
+  try {
+    const respuesta = await fetch("/api/historico/reiniciar", { method: "POST" });
+    const datos = await respuesta.json();
+    if (!respuesta.ok) throw new Error(datos.error || "No se pudo reiniciar el histórico");
+    await actualizarContadorHistorico();
+  } catch (error) {
+    alert(`Error: ${error.message}`);
+  } finally {
+    boton.disabled = false;
+  }
+});
+
+const zonaCarga = document.getElementById("zona-carga");
+const entradaArchivo = document.getElementById("entrada-archivo");
+const mensajeCarga = document.getElementById("mensaje-carga");
+const panelResultados = document.getElementById("panel-resultados");
+const rejillaTarjetas = document.getElementById("rejilla-tarjetas");
+const contadorResultados = document.getElementById("contador-resultados");
+const barraProgreso = document.getElementById("barra-progreso");
+const barraProgresoRelleno = document.getElementById("barra-progreso-relleno");
+
+zonaCarga.addEventListener("click", () => entradaArchivo.click());
+zonaCarga.addEventListener("dragover", (e) => { e.preventDefault(); zonaCarga.classList.add("arrastrando"); });
+zonaCarga.addEventListener("dragleave", () => zonaCarga.classList.remove("arrastrando"));
+zonaCarga.addEventListener("drop", (e) => {
+  e.preventDefault();
+  zonaCarga.classList.remove("arrastrando");
+  if (e.dataTransfer.files.length) escanearArchivo(e.dataTransfer.files[0]);
+});
+entradaArchivo.addEventListener("change", () => {
+  if (entradaArchivo.files.length) escanearArchivo(entradaArchivo.files[0]);
+});
+
+function mensajeProgreso(texto) {
+  mensajeCarga.innerHTML = `<i data-lucide="loader-circle" class="girando" style="width:14px;height:14px;vertical-align:-2px;"></i> ${texto}`;
+  refrescarIconos();
+}
+
+function actualizarContador() {
+  const validos = ultimosResultados.filter((r) => r.ok && r.campos.numero_factura != null).length;
+  contadorResultados.textContent = `${validos} de ${ultimosResultados.length} con número leído`;
+}
+
+async function escanearArchivo(archivo) {
+  ultimosResultados = [];
+  rejillaTarjetas.innerHTML = "";
+  panelResultados.style.display = "block";
+  barraProgreso.classList.add("visible");
+  barraProgresoRelleno.style.width = "0%";
+  mensajeProgreso(`Preparando "${archivo.name}"…`);
+
+  const datosFormulario = new FormData();
+  datosFormulario.append("archivo", archivo);
+
+  try {
+    const respuesta = await fetch("/api/escanear", { method: "POST", body: datosFormulario });
+
+    if (!respuesta.ok || !respuesta.body) {
+      const datos = await respuesta.json().catch(() => ({}));
+      throw new Error(datos.error || "Error al escanear");
+    }
+
+    const lector = respuesta.body.getReader();
+    const decodificador = new TextDecoder();
+    let buffer = "";
+    let total = 0;
+    let procesadas = 0;
+
+    while (true) {
+      const { done, value } = await lector.read();
+      if (done) break;
+      buffer += decodificador.decode(value, { stream: true });
+
+      let indiceSalto;
+      while ((indiceSalto = buffer.indexOf("\n")) >= 0) {
+        const linea = buffer.slice(0, indiceSalto).trim();
+        buffer = buffer.slice(indiceSalto + 1);
+        if (!linea) continue;
+        const evento = JSON.parse(linea);
+
+        if (evento.evento === "inicio") {
+          total = evento.total_paginas;
+          mensajeProgreso(`Leyendo factura 0 de ${total}…`);
+        } else if (evento.evento === "pagina") {
+          procesadas++;
+          ultimosResultados.push(evento.resultado);
+          agregarTarjeta(evento.resultado);
+          actualizarContador();
+          barraProgresoRelleno.style.width = `${(procesadas / total) * 100}%`;
+          mensajeProgreso(`Leyendo factura ${procesadas} de ${total}…`);
+          if (evento.resultado.ok) actualizarContadorHistorico();
+        } else if (evento.evento === "fin") {
+          mensajeCarga.textContent = `Listo: ${procesadas} factura(s) leída(s).`;
+          barraProgreso.classList.remove("visible");
+        }
+      }
+    }
+  } catch (error) {
+    mensajeCarga.textContent = `Error: ${error.message}`;
+    barraProgreso.classList.remove("visible");
+  }
+}
+
+function tarjetaResultado(r) {
+  const idTarjeta = `tarjeta-${r.pagina}`;
+  if (!r.ok) {
+    return `
+      <div class="tarjeta-numero fila-error" id="${idTarjeta}" data-pagina="${r.pagina}">
+        <div class="etiqueta-pagina"><span>Pág. ${r.pagina}</span> <i data-lucide="triangle-alert" style="width:13px;height:13px;color:var(--negativa);"></i></div>
+        <div class="texto-error">${r.error}</div>
+      </div>`;
+  }
+  const numero = r.campos.numero_factura;
+  const esRespaldo = (r.motor || "").includes("respaldo");
+  const vacio = numero === null || numero === undefined;
+  return `
+    <div class="tarjeta-numero" id="${idTarjeta}" data-pagina="${r.pagina}">
+      <div class="etiqueta-pagina">
+        <span>Pág. ${r.pagina}</span>
+        <span class="chip-motor ${esRespaldo ? "respaldo" : ""}" title="${esRespaldo ? "Gemini estaba saturado, respondió el respaldo" : ""}">${r.motor || "—"}</span>
+      </div>
+      <input class="input-numero-grande ${vacio ? "vacio" : ""}" type="text" inputmode="numeric" data-campo="numero_factura" value="${vacio ? "" : numero}" placeholder="sin número">
+      <div class="bloque-proveedor" id="proveedor-${r.pagina}"></div>
+      <div class="archivo-origen" title="${r.archivo}">${r.archivo}</div>
+    </div>`;
+}
+
+const temporizadoresSync = {};
+function sincronizarFilaHistorico(pagina, cambios) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado || !resultado.fila_historico) return;
+  clearTimeout(temporizadoresSync[pagina]);
+  temporizadoresSync[pagina] = setTimeout(async () => {
+    try {
+      await fetch("/api/historico/actualizar_fila", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fila: resultado.fila_historico, ...cambios }),
+      });
+    } catch (error) {
+      console.error("No se pudo sincronizar la fila del histórico:", error);
+    }
+  }, 600);
+}
+
+const temporizadoresBusqueda = {};
+function renderBloqueProveedor(pagina) {
+  const contenedor = document.getElementById(`proveedor-${pagina}`);
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!contenedor || !resultado) return;
+  const campos = resultado.campos;
+
+  if (campos.codigo_proveedor) {
+    contenedor.innerHTML = `
+      <div class="proveedor-elegido">
+        <i data-lucide="badge-check" class="icono-check"></i>
+        <span class="texto-elegido"><b>${campos.nombre_proveedor || ""}</b> (${campos.codigo_proveedor})</span>
+        <button type="button" class="boton-quitar-proveedor" title="Quitar proveedor"><i data-lucide="x"></i></button>
+      </div>`;
+    refrescarIconos();
+    contenedor.querySelector(".boton-quitar-proveedor").addEventListener("click", () => quitarProveedor(pagina));
+    return;
+  }
+
+  contenedor.innerHTML = `
+    <input class="input-proveedor" type="text" placeholder="Buscar proveedor en PROFIT (nombre, código o RIF)…" autocomplete="off">
+    <div class="resultados-proveedor"></div>`;
+  const input = contenedor.querySelector(".input-proveedor");
+  const lista = contenedor.querySelector(".resultados-proveedor");
+
+  input.addEventListener("input", () => {
+    const texto = input.value.trim();
+    clearTimeout(temporizadoresBusqueda[pagina]);
+    if (!texto) {
+      lista.classList.remove("visible");
+      lista.innerHTML = "";
+      return;
+    }
+    temporizadoresBusqueda[pagina] = setTimeout(async () => {
+      try {
+        const respuesta = await fetch(`/api/proveedores/buscar?q=${encodeURIComponent(texto)}`);
+        const datos = await respuesta.json();
+        const proveedores = datos.proveedores || [];
+        if (!proveedores.length) {
+          lista.innerHTML = `<div class="item-proveedor sin-resultados">Sin coincidencias en PROFIT</div>`;
+        } else {
+          lista.innerHTML = proveedores.map((p) => `
+            <div class="item-proveedor">
+              <div class="nombre-prov">${p.nombre}</div>
+              <div class="detalle-prov">Cód. ${p.co_prov}${p.rif ? " · " + p.rif : ""}</div>
+            </div>`).join("");
+          Array.from(lista.querySelectorAll(".item-proveedor")).forEach((el, indice) => {
+            el.addEventListener("mousedown", (evento) => {
+              evento.preventDefault();
+              elegirProveedor(pagina, proveedores[indice]);
+            });
+          });
+        }
+        lista.classList.add("visible");
+      } catch (error) {
+        lista.innerHTML = `<div class="item-proveedor sin-resultados">Error consultando PROFIT</div>`;
+        lista.classList.add("visible");
+      }
+    }, 350);
+  });
+  input.addEventListener("blur", () => setTimeout(() => lista.classList.remove("visible"), 150));
+}
+
+function elegirProveedor(pagina, proveedor) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado) return;
+  resultado.campos.codigo_proveedor = proveedor.co_prov;
+  resultado.campos.nombre_proveedor = proveedor.nombre;
+  resultado.campos.rif_proveedor = proveedor.rif;
+  renderBloqueProveedor(pagina);
+  sincronizarFilaHistorico(pagina, {
+    codigo_proveedor: proveedor.co_prov,
+    nombre_proveedor: proveedor.nombre,
+    rif_proveedor: proveedor.rif,
+  });
+}
+
+function quitarProveedor(pagina) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado) return;
+  resultado.campos.codigo_proveedor = null;
+  resultado.campos.nombre_proveedor = null;
+  resultado.campos.rif_proveedor = null;
+  renderBloqueProveedor(pagina);
+  sincronizarFilaHistorico(pagina, { codigo_proveedor: null, nombre_proveedor: null, rif_proveedor: null });
+}
+
+function activarTarjeta(pagina) {
+  const tarjeta = rejillaTarjetas.querySelector(`[data-pagina="${pagina}"]`);
+  if (!tarjeta) return;
+  const input = tarjeta.querySelector("input[data-campo]");
+  if (input) {
+    input.addEventListener("input", () => {
+      const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+      if (!resultado) return;
+      const soloDigitos = input.value.replace(/\D/g, "");
+      resultado.campos.numero_factura = soloDigitos ? Number(soloDigitos) : null;
+      input.classList.toggle("vacio", !soloDigitos);
+      actualizarContador();
+      sincronizarFilaHistorico(pagina, { numero_factura: resultado.campos.numero_factura });
+    });
+  }
+  renderBloqueProveedor(pagina);
+}
+
+function agregarTarjeta(resultado) {
+  rejillaTarjetas.insertAdjacentHTML("beforeend", tarjetaResultado(resultado));
+  refrescarIconos();
+  activarTarjeta(resultado.pagina);
+}
+
+document.getElementById("boton-copiar").addEventListener("click", async () => {
+  const numeros = ultimosResultados
+    .filter((r) => r.ok && r.campos.numero_factura != null)
+    .map((r) => r.campos.numero_factura)
+    .join("\n");
+
+  if (!numeros) {
+    alert("Todavía no hay ningún número leído para copiar.");
+    return;
+  }
+
+  const boton = document.getElementById("boton-copiar");
+  const textoOriginal = boton.innerHTML;
+  try {
+    await navigator.clipboard.writeText(numeros);
+    boton.classList.add("exito");
+    boton.innerHTML = `<i data-lucide="check"></i> Copiado`;
+    refrescarIconos();
+    setTimeout(() => {
+      boton.classList.remove("exito");
+      boton.innerHTML = textoOriginal;
+      refrescarIconos();
+    }, 1600);
+  } catch (error) {
+    alert("No se pudo copiar automáticamente — selecciona y copia manualmente desde las tarjetas.");
+  }
+});
+
+document.getElementById("boton-exportar").addEventListener("click", async () => {
+  const respuesta = await fetch("/api/exportar_excel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resultados: ultimosResultados }),
+  });
+  if (!respuesta.ok) {
+    alert("No se pudo exportar a Excel.");
+    return;
+  }
+  const blob = await respuesta.blob();
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = "ocr_ps.xlsx";
+  enlace.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById("boton-nuevo").addEventListener("click", () => {
+  panelResultados.style.display = "none";
+  mensajeCarga.textContent = "";
+  entradaArchivo.value = "";
+  ultimosResultados = [];
+});
+
+refrescarIconos();
+verificarEstadoOCR();
+actualizarContadorHistorico();
+</script>
+</body>
+</html>

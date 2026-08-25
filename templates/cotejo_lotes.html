@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cotejo de Lotes — OCR-PS</title>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>
+  :root {
+    --fondo: #ffffff;
+    --panel: #ffffff;
+    --panel-alt: #f3f1fb;
+    --borde: #e6e1f7;
+    --texto: #1a1533;
+    --texto-tenue: #6f6690;
+    --acento: #7c5cff;
+    --acento-oscuro: #5b3fd6;
+    --acento-clara: #efeafd;
+    --negativa: #e0403e;
+    --positiva: #1fa855;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--panel-alt);
+    color: var(--texto);
+  }
+  header {
+    background: linear-gradient(135deg, var(--acento-oscuro), var(--acento));
+    color: white;
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  header h1 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+  header .subtitulo { font-size: 11.5px; opacity: 0.8; font-weight: 400; margin-left: 2px; }
+  a.enlace-modulo {
+    color: rgba(255,255,255,0.75);
+    font-size: 12px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  a.enlace-modulo:hover { color: white; }
+  .enlaces-header { display: flex; align-items: center; gap: 14px; }
+
+  main { max-width: 900px; margin: 0 auto; padding: 20px 24px 60px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .panel h2 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .panel h2 i { width: 17px; height: 17px; color: var(--acento-oscuro); }
+  .panel .descripcion { font-size: 12.5px; color: var(--texto-tenue); margin: 0 0 14px; }
+
+  .fila-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input[type="text"], input[type="number"] {
+    border: 1px solid var(--borde);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13.5px;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: var(--texto);
+    flex: 1;
+    min-width: 160px;
+  }
+  input:focus { outline: 1px solid var(--acento); }
+
+  button {
+    background: var(--acento);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-size: 13.5px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  button:hover { filter: brightness(1.06); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secundario {
+    background: var(--panel-alt);
+    color: var(--texto);
+    border: 1px solid var(--borde);
+  }
+
+  .lista-facturas { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .item-factura {
+    background: var(--panel-alt);
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+    padding: 10px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .item-factura .datos-factura { font-size: 13px; }
+  .item-factura .datos-factura b { color: var(--acento-oscuro); }
+  .item-factura .proveedor-factura { font-size: 11.5px; color: var(--texto-tenue); margin-top: 2px; }
+
+  .factura-activa {
+    background: var(--acento-clara);
+    border: 1px solid var(--acento);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    font-size: 13px;
+  }
+  .factura-activa b { color: var(--acento-oscuro); }
+  .factura-activa .quitar-activa {
+    float: right;
+    background: none;
+    border: none;
+    color: var(--texto-tenue);
+    cursor: pointer;
+    padding: 2px;
+  }
+  .factura-activa .quitar-activa:hover { color: var(--negativa); }
+
+  .lista-lotes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .chip-lote {
+    background: var(--panel-alt);
+    border: 1px solid var(--borde);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--texto);
+  }
+
+  .resultado-cotejo { margin-top: 16px; border-radius: 10px; padding: 14px; font-size: 13.5px; display: none; }
+  .resultado-cotejo.visible { display: block; }
+  .resultado-cotejo.coincide { background: rgba(31,168,85,0.08); border: 1px solid rgba(31,168,85,0.35); }
+  .resultado-cotejo.sin-coincidencia { background: rgba(224,64,62,0.06); border: 1px solid rgba(224,64,62,0.3); }
+  .resultado-cotejo .titulo-resultado { display: flex; align-items: center; gap: 8px; font-weight: 700; margin-bottom: 6px; }
+  .resultado-cotejo.coincide .titulo-resultado { color: var(--positiva); }
+  .resultado-cotejo.sin-coincidencia .titulo-resultado { color: var(--negativa); }
+  .resultado-cotejo .detalle-cotejo div { margin-top: 3px; color: var(--texto); }
+  .resultado-cotejo .detalle-cotejo b { color: var(--texto-tenue); font-weight: 600; }
+
+  .mensaje-vacio { font-size: 13px; color: var(--texto-tenue); padding: 8px 0; }
+  .mensaje-error { font-size: 12.5px; color: var(--negativa); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><i data-lucide="list-checks"></i> Cotejo de Lotes <span class="subtitulo">— OCR-PS, psicotrópicos</span></h1>
+  <div class="enlaces-header">
+    <a class="enlace-modulo" href="/"><i data-lucide="scan-line"></i> Escanear facturas</a>
+    <a class="enlace-modulo" href="/menu"><i data-lucide="layout-grid"></i> Otros módulos</a>
+  </div>
+</header>
+
+<main>
+  <div class="panel">
+    <h2><i data-lucide="search"></i> 1. Buscar factura</h2>
+    <p class="descripcion">Un mismo número de factura puede repetirse entre proveedores distintos — por eso la búsqueda muestra el proveedor de cada resultado, para elegir la factura correcta antes de registrarle un lote.</p>
+    <div class="fila-form">
+      <input type="text" id="entrada-buscar-factura" inputmode="numeric" placeholder="Número de factura, ej. 174857">
+      <button id="boton-buscar-factura"><i data-lucide="search"></i> Buscar</button>
+    </div>
+    <div class="lista-facturas" id="lista-facturas"></div>
+    <div class="mensaje-error" id="error-buscar-factura"></div>
+  </div>
+
+  <div class="panel" id="panel-factura-activa" style="display:none;">
+    <h2><i data-lucide="file-check-2"></i> 2. Registrar lotes de la factura</h2>
+    <p class="descripcion">Cada artículo de la factura puede tener su propio número de lote — agrégalos uno por uno.</p>
+    <div class="factura-activa" id="factura-activa"></div>
+    <div class="fila-form">
+      <input type="text" id="entrada-lote" placeholder="Número de lote, ej. A2231">
+      <button id="boton-registrar-lote"><i data-lucide="plus"></i> Registrar lote</button>
+    </div>
+    <div class="mensaje-error" id="error-registrar-lote"></div>
+    <div class="lista-lotes" id="lista-lotes"></div>
+  </div>
+
+  <div class="panel">
+    <h2><i data-lucide="scale"></i> 3. Cotejar factura + lote</h2>
+    <p class="descripcion">Escribe la factura y el lote a verificar — se busca contra lo que ya está registrado en nuestra base (clave = número de factura + "-" + lote).</p>
+    <div class="fila-form">
+      <input type="text" id="entrada-cotejo-factura" inputmode="numeric" placeholder="Número de factura">
+      <input type="text" id="entrada-cotejo-lote" placeholder="Lote">
+      <button id="boton-cotejar"><i data-lucide="scale"></i> Cotejar</button>
+    </div>
+    <div class="mensaje-error" id="error-cotejar"></div>
+    <div class="resultado-cotejo" id="resultado-cotejo"></div>
+  </div>
+</main>
+
+<script>
+function refrescarIconos() { if (window.lucide) lucide.createIcons(); }
+refrescarIconos();
+
+let facturaActiva = null;
+
+const entradaBuscarFactura = document.getElementById("entrada-buscar-factura");
+const listaFacturas = document.getElementById("lista-facturas");
+const errorBuscarFactura = document.getElementById("error-buscar-factura");
+
+async function buscarFactura() {
+  const numero = entradaBuscarFactura.value.trim();
+  errorBuscarFactura.textContent = "";
+  listaFacturas.innerHTML = "";
+  if (!numero || !/^\d+$/.test(numero)) {
+    errorBuscarFactura.textContent = "Escribe un número de factura válido.";
+    return;
+  }
+  try {
+    const respuesta = await fetch(`/api/facturas/buscar?numero_factura=${encodeURIComponent(numero)}`);
+    const datos = await respuesta.json();
+    if (!datos.ok) throw new Error(datos.error || "No se pudo buscar");
+    if (!datos.facturas.length) {
+      listaFacturas.innerHTML = `<div class="mensaje-vacio">Ninguna factura cargada al servidor con ese número todavía.</div>`;
+      return;
+    }
+    listaFacturas.innerHTML = datos.facturas.map((f) => `
+      <div class="item-factura" data-id="${f.id}">
+        <div>
+          <div class="datos-factura">Factura <b>${f.numero_factura}</b></div>
+          <div class="proveedor-factura">${f.nombre_proveedor ? f.nombre_proveedor + " (" + f.codigo_proveedor + ")" : "sin proveedor asignado"} · ${f.fecha_registro}</div>
+        </div>
+        <button class="secundario" data-elegir="${f.id}">Elegir</button>
+      </div>`).join("");
+    datos.facturas.forEach((f) => {
+      listaFacturas.querySelector(`[data-elegir="${f.id}"]`).addEventListener("click", () => elegirFactura(f));
+    });
+  } catch (error) {
+    errorBuscarFactura.textContent = `Error: ${error.message}`;
+  }
+}
+document.getElementById("boton-buscar-factura").addEventListener("click", buscarFactura);
+entradaBuscarFactura.addEventListener("keydown", (e) => { if (e.key === "Enter") buscarFactura(); });
+
+const panelFacturaActiva = document.getElementById("panel-factura-activa");
+const divFacturaActiva = document.getElementById("factura-activa");
+const listaLotes = document.getElementById("lista-lotes");
+
+async function elegirFactura(factura) {
+  facturaActiva = factura;
+  panelFacturaActiva.style.display = "block";
+  divFacturaActiva.innerHTML = `
+    <button class="quitar-activa" title="Quitar"><i data-lucide="x"></i></button>
+    Factura <b>${factura.numero_factura}</b> — ${factura.nombre_proveedor ? factura.nombre_proveedor + " (" + factura.codigo_proveedor + ")" : "sin proveedor asignado"}`;
+  refrescarIconos();
+  divFacturaActiva.querySelector(".quitar-activa").addEventListener("click", () => {
+    facturaActiva = null;
+    panelFacturaActiva.style.display = "none";
+  });
+  await cargarLotesDeFactura();
+  panelFacturaActiva.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function cargarLotesDeFactura() {
+  if (!facturaActiva) return;
+  const respuesta = await fetch(`/api/lotes/de_factura/${facturaActiva.id}`);
+  const datos = await respuesta.json();
+  const lotes = datos.lotes || [];
+  listaLotes.innerHTML = lotes.length
+    ? lotes.map((l) => `<span class="chip-lote">${l.lote}</span>`).join("")
+    : `<div class="mensaje-vacio">Todavía no hay lotes registrados para esta factura.</div>`;
+}
+
+const entradaLote = document.getElementById("entrada-lote");
+const errorRegistrarLote = document.getElementById("error-registrar-lote");
+
+async function registrarLote() {
+  const lote = entradaLote.value.trim();
+  errorRegistrarLote.textContent = "";
+  if (!facturaActiva) return;
+  if (!lote) {
+    errorRegistrarLote.textContent = "Escribe un número de lote.";
+    return;
+  }
+  try {
+    const respuesta = await fetch("/api/lotes/registrar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ factura_id: facturaActiva.id, numero_factura: facturaActiva.numero_factura, lote }),
+    });
+    const datos = await respuesta.json();
+    if (!datos.ok) throw new Error(datos.error || "No se pudo registrar el lote");
+    entradaLote.value = "";
+    await cargarLotesDeFactura();
+  } catch (error) {
+    errorRegistrarLote.textContent = `Error: ${error.message}`;
+  }
+}
+document.getElementById("boton-registrar-lote").addEventListener("click", registrarLote);
+entradaLote.addEventListener("keydown", (e) => { if (e.key === "Enter") registrarLote(); });
+
+const entradaCotejoFactura = document.getElementById("entrada-cotejo-factura");
+const entradaCotejoLote = document.getElementById("entrada-cotejo-lote");
+const errorCotejar = document.getElementById("error-cotejar");
+const resultadoCotejo = document.getElementById("resultado-cotejo");
+
+async function cotejar() {
+  const numero = entradaCotejoFactura.value.trim();
+  const lote = entradaCotejoLote.value.trim();
+  errorCotejar.textContent = "";
+  resultadoCotejo.className = "resultado-cotejo";
+  resultadoCotejo.innerHTML = "";
+  if (!numero || !/^\d+$/.test(numero) || !lote) {
+    errorCotejar.textContent = "Escribe número de factura y lote.";
+    return;
+  }
+  try {
+    const respuesta = await fetch(`/api/lotes/cotejar?numero_factura=${encodeURIComponent(numero)}&lote=${encodeURIComponent(lote)}`);
+    const datos = await respuesta.json();
+    if (!datos.ok) throw new Error(datos.error || "No se pudo cotejar");
+    if (datos.encontrado) {
+      const c = datos.coincidencias[0];
+      resultadoCotejo.classList.add("visible", "coincide");
+      resultadoCotejo.innerHTML = `
+        <div class="titulo-resultado"><i data-lucide="check-circle-2"></i> Coincide — ya está registrado</div>
+        <div class="detalle-cotejo">
+          <div><b>Clave:</b> ${c.clave}</div>
+          <div><b>Proveedor:</b> ${c.nombre_proveedor || "—"} (${c.codigo_proveedor || "—"})</div>
+          <div><b>Factura registrada el:</b> ${c.fecha_registro_factura}</div>
+          <div><b>Lote registrado el:</b> ${c.fecha_registro_lote}</div>
+        </div>`;
+    } else {
+      resultadoCotejo.classList.add("visible", "sin-coincidencia");
+      resultadoCotejo.innerHTML = `<div class="titulo-resultado"><i data-lucide="x-circle"></i> No se encontró esa combinación en nuestra base</div>`;
+    }
+    refrescarIconos();
+  } catch (error) {
+    errorCotejar.textContent = `Error: ${error.message}`;
+  }
+}
+document.getElementById("boton-cotejar").addEventListener("click", cotejar);
+[entradaCotejoFactura, entradaCotejoLote].forEach((el) => el.addEventListener("keydown", (e) => { if (e.key === "Enter") cotejar(); }));
+</script>
+</body>
+</html>

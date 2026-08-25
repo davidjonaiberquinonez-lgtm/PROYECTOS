@@ -1,0 +1,116 @@
+Servidor de Retenciones — paquete listo para 192.168.4.23
+============================================================
+
+Qué hay en esta carpeta
+------------------------
+- 3 módulos de OCR, cada uno con su interfaz web propia:
+    servidor_retenciones.py   (puerto 5030) — Comprobantes de Retención de IVA
+    servidor_abonos.py        (puerto 5041) — Recibos de Cobro / abonos
+    servidor_ocr_ps.py        (puerto 5042) — OCR-PS (n° de factura, psicotrópicos)
+- api_retenciones_ocr.py  (puerto 5031) — API pública sin interfaz, para otros
+  sistemas (ej. el conector de tu compañero). Cubre los tres tipos de documento.
+- ocr_retenciones_core.py / ocr_abonos_core.py / ocr_ps_core.py — la inteligencia
+  de extracción de cada módulo (Gemini + respaldo OpenRouter).
+- bd_ocr.py — YA NO usa SQLite: se conecta al MySQL de XAMPP que corre en
+  192.168.4.23 (esa misma máquina destino), a una base llamada "ocr_scanner"
+  que bd_ocr.py crea sola la primera vez que corre. Tiene 3 tablas de datos
+  (retenciones, abonos, ocr_ps) + documentos_ps (guarda el PDF/foto original
+  de cada factura de OCR-PS como BLOB) + lotes_ps (cotejamiento de lotes,
+  ver más abajo) + progreso_carga (para no duplicar filas). El Excel
+  histórico de cada módulo sigue siendo el borrador de siempre; NO se guarda
+  solo automático — cada módulo tiene un botón "Cargar al servidor" en su
+  página que, después de que alguien revisa el Excel, sube ahí solo las
+  filas nuevas.
+  OJO MUY IMPORTANTE: ese mismo XAMPP en 192.168.4.23 YA tiene una base de
+  datos llamada "retenciones" que es de OTRO sistema viejo totalmente
+  distinto (usuarios, permisos, 6000+ comprobantes reales) — no tiene nada
+  que ver con este proyecto. Por eso esto vive aparte, en "ocr_scanner".
+  Nunca apuntar bd_ocr.py a esa otra base.
+- bin/consultar_proveedor_profit.py — adaptador de solo lectura contra el
+  Profit real (SQL Server, tabla `prov`) que usa OCR-PS para que el código de
+  proveedor de cada factura se elija de una búsqueda contra el maestro real,
+  en vez de tipearse a mano (evita proveedores mal escritos o inventados en
+  la base de datos).
+- Cotejo de lotes (OCR-PS, página /cotejo): cada factura puede tener varios
+  artículos, cada uno con su propio lote — la persona asignada busca la
+  factura ya cargada, le registra los lotes a mano, y después puede cotejar
+  cualquier combinación "número de factura + lote" contra lo ya registrado
+  (clave = numero_factura + "-" + lote). El resultado dice si esa
+  combinación ya está en nuestra base o no.
+- templates/ — las 5 páginas HTML (retenciones, abonos, ocr_ps, cotejo de
+  lotes, y el menú compartido).
+- requirements.txt — dependencias de Python: incluye pyodbc (para Profit) y
+  pymysql (para el MySQL de XAMPP) — ya instaladas y probadas en un venv
+  local dentro de esta misma carpeta, ver "venv/".
+- .env — claves, puertos y credenciales de Profit y de MySQL/XAMPP. YA tiene
+  las claves reales de Gemini/OpenRouter, los puertos por defecto
+  (5030 / 5031 / 5041 / 5042), PROFIT_SQL_HOST/PORT/NAME/USER/PASS, y
+  XAMPP_MYSQL_HOST/PORT/USER/PASSWORD/DB. Trátalo como secreto.
+
+Ya se probó en esta máquina, en vivo contra los dos sistemas reales (no
+simulados): la búsqueda de proveedor contra Profit (SQL Server), y TODO el
+flujo de MySQL contra el XAMPP real de 192.168.4.23 — cargar histórico,
+buscar factura, registrar lotes, y cotejar (caso encontrado y caso no
+encontrado) — probado end-to-end y limpiado después, sin dejar datos de
+prueba ni en el Excel ni en MySQL.
+
+IMPORTANTE — requisitos de red:
+  - OCR-PS necesita alcanzar 192.168.4.20:1433 (SQL Server de Profit) para
+    la búsqueda de proveedor, y el driver ODBC "SQL Server" instalado (viene
+    por defecto en Windows — confirmar con
+    `python -c "import pyodbc; print(pyodbc.drivers())"` dentro del venv).
+  - Los tres módulos necesitan alcanzar 192.168.4.23:3306 (el propio XAMPP
+    MySQL) para "Cargar al servidor" y para /cotejo — como el código va a
+    correr EN esa misma máquina, esto normalmente no es problema, pero
+    conviene confirmar que el servicio MySQL de XAMPP esté iniciado (panel
+    de control de XAMPP) antes de probar el botón.
+  - Si cualquiera de estas dos redes no llega, avisar antes de dar por listo
+    ese pedazo — el resto de cada módulo (escanear, Excel) funciona igual.
+
+Pasos para montarlo en 192.168.4.23
+-------------------------------------
+1. Copiar TODA esta carpeta ("Servidor de Retenciones") a la máquina 192.168.4.23
+   (ya sea por red compartida, USB, o el método que uses normalmente para pasar
+   archivos a ese equipo).
+
+2. En esa máquina, verificar que los puertos 5030, 5031, 5041 y 5042 estén
+   libres — ese equipo ya corre la app de la "matriz" en el puerto 3001, así
+   que en principio no debería chocar, pero conviene revisar con:
+     netstat -ano | findstr "5030 5031 5041 5042"
+   Si alguno está ocupado, cambiar el puerto correspondiente en el .env.
+
+3. Si la carpeta se copió tal cual (con la subcarpeta "venv/" incluida), NO
+   reutilices ese venv — los entornos virtuales de Python no son portables
+   entre instalaciones. Bórralo y creá uno nuevo ahí mismo:
+     rmdir /s /q venv
+     python -m venv venv
+     venv\Scripts\pip install -r requirements.txt
+
+   (Si no tienes Python instalado en esa máquina, instalarlo primero —
+   cualquier versión 3.10 o más nueva sirve.)
+
+4. Crear la base de datos (una sola vez — se conecta al MySQL de XAMPP que
+   ya corre en esta misma máquina y crea ahí la base "ocr_scanner"; hace
+   falta que el servicio MySQL de XAMPP esté iniciado primero):
+     venv\Scripts\python bd_ocr.py
+
+5. Arrancar los tres módulos (cada uno en su propia ventana/consola, o como
+   tarea programada / servicio si prefieren que quede corriendo solo):
+     venv\Scripts\python servidor_retenciones.py
+     venv\Scripts\python servidor_abonos.py
+     venv\Scripts\python servidor_ocr_ps.py
+     venv\Scripts\python api_retenciones_ocr.py   (opcional, solo si tu
+                                                     compañero va a consumir
+                                                     la API pública)
+
+6. Verificar desde un navegador (o desde otra máquina en la misma red):
+     http://192.168.4.23:5030/   (Retenciones)
+     http://192.168.4.23:5041/   (Abonos)
+     http://192.168.4.23:5042/   (OCR-PS)
+     http://192.168.4.23:5042/cotejo   (Cotejo de lotes)
+     http://192.168.4.23:5042/menu   (menú con las tres tarjetas)
+
+Nota sobre lo que falta
+-------------------------
+El botón "Cargar al servidor" y el cotejo de lotes ya están armados en los
+tres módulos, guardando en MySQL (XAMPP) — eso ya no falta.

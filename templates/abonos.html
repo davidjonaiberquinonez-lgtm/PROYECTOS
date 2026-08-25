@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Escáner de Recibos de Cobro</title>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>
+  :root {
+    --fondo: #ffffff;
+    --panel: #ffffff;
+    --panel-alt: #f0f2f5;
+    --borde: #e9edef;
+    --texto: #111b21;
+    --texto-tenue: #667781;
+    --acento: #00a884;
+    --acento-oscuro: #008069;
+    --negativa: #e0403e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--panel-alt);
+    color: var(--texto);
+  }
+  header {
+    background: var(--acento-oscuro);
+    color: white;
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  header h1 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+  header a.enlace-modulo {
+    color: rgba(255,255,255,0.75);
+    font-size: 12px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  header a.enlace-modulo:hover { color: white; }
+  #estado-ocr { font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+  #enlace-historico {
+    font-size: 12.5px;
+    color: white;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.14);
+    border-radius: 999px;
+    padding: 5px 12px;
+    transition: background 0.15s ease;
+  }
+  #enlace-historico:hover { background: rgba(255,255,255,0.25); }
+  #enlace-historico i { width: 14px; height: 14px; }
+  #boton-reiniciar-historico {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.14);
+    color: white;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  #boton-reiniciar-historico:hover { background: var(--negativa); }
+  #boton-reiniciar-historico i { width: 14px; height: 14px; }
+  #boton-cargar-servidor {
+    font-size: 12.5px;
+    color: white;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.16);
+    border-radius: 999px;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  #boton-cargar-servidor:hover { background: rgba(255,255,255,0.28); }
+  #boton-cargar-servidor:disabled { opacity: 0.55; cursor: default; }
+  #boton-cargar-servidor i { width: 14px; height: 14px; }
+  #contador-pendientes-carga { font-weight: 700; }
+  #punto-ocr { width: 8px; height: 8px; border-radius: 50%; background: #ffb3b0; }
+  #punto-ocr.ok { background: #b6f0a1; }
+
+  main { max-width: 1300px; margin: 0 auto; padding: 20px 24px 60px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+
+  #zona-carga {
+    border: 2px dashed var(--borde);
+    border-radius: 10px;
+    padding: 30px;
+    text-align: center;
+    color: var(--texto-tenue);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  #zona-carga.arrastrando { border-color: var(--acento); background: rgba(0,168,132,0.06); }
+  #zona-carga svg { width: 34px; height: 34px; margin-bottom: 8px; opacity: 0.6; }
+  #entrada-archivo { display: none; }
+
+  button {
+    background: var(--acento);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 16px;
+    font-size: 13.5px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  button:hover { filter: brightness(1.06); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secundario {
+    background: var(--panel-alt);
+    color: var(--texto);
+    border: 1px solid var(--borde);
+  }
+
+  #mensaje-carga { font-size: 13px; margin-top: 10px; color: var(--texto-tenue); }
+
+  #barra-progreso {
+    display: none;
+    height: 6px;
+    background: var(--panel-alt);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  #barra-progreso.visible { display: block; }
+  #barra-progreso-relleno {
+    height: 100%;
+    width: 0%;
+    background: var(--acento);
+    border-radius: 999px;
+    transition: width 0.35s ease;
+  }
+
+  tr.fila-nueva { animation: aparecer 0.35s ease; }
+  @keyframes aparecer {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .envoltorio-tabla { overflow-x: auto; }
+  table { width: 100%; min-width: 1400px; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--borde); vertical-align: top; }
+  th { background: var(--panel-alt); color: var(--texto-tenue); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+  td input {
+    width: 100%;
+    min-width: 90px;
+    border: 1px solid transparent;
+    background: transparent;
+    font-size: 13px;
+    padding: 3px 4px;
+    border-radius: 4px;
+    font-family: inherit;
+  }
+  td input:hover, td input:focus { border-color: var(--borde); background: var(--panel-alt); outline: none; }
+  .fila-error td { color: var(--negativa); font-size: 12.5px; }
+
+  .detalle-toggle {
+    font-size: 11.5px;
+    color: var(--acento-oscuro);
+    cursor: pointer;
+    text-decoration: underline;
+    white-space: nowrap;
+  }
+  .texto-crudo {
+    display: none;
+    background: var(--panel-alt);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    color: var(--texto-tenue);
+    white-space: pre-wrap;
+    margin-top: 6px;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+  .texto-crudo.visible { display: block; }
+
+  .barra-acciones { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .girando { animation: girar 1s linear infinite; }
+  @keyframes girar { to { transform: rotate(360deg); } }
+
+  .chip-motor {
+    display: inline-block;
+    font-size: 10.5px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(0,168,132,0.12);
+    color: var(--acento-oscuro);
+    white-space: nowrap;
+  }
+  .chip-motor.respaldo { background: rgba(224,64,62,0.1); color: var(--negativa); }
+
+  .chip-confianza {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  .chip-confianza .indice {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .chip-confianza.validado .indice { background: rgba(31,168,85,0.13); color: #1fa855; }
+  .chip-confianza.pendiente .indice { background: rgba(201,154,27,0.15); color: #c99a1b; }
+  .chip-confianza .detalle { color: var(--texto-tenue); }
+  .boton-guardar-manual {
+    background: none;
+    border: 1px solid #c99a1b;
+    color: #8a6d16;
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 10.5px;
+    cursor: pointer;
+    margin-top: 3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .boton-guardar-manual:hover { background: rgba(201,154,27,0.12); }
+  .boton-guardar-manual:disabled { opacity: 0.6; cursor: default; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><i data-lucide="receipt"></i> Escáner de Recibos de Cobro</h1>
+  <div style="display:flex; align-items:center; gap:14px;">
+    <a class="enlace-modulo" href="/menu"><i data-lucide="layout-grid"></i> Otros módulos</a>
+    <a href="/api/historico/descargar" id="enlace-historico" title="Descarga el Excel con todas las extracciones guardadas hasta ahora">
+      <i data-lucide="database"></i> Histórico: <span id="texto-historico">—</span>
+    </a>
+    <button id="boton-cargar-servidor" title="Sube al servidor las filas del histórico que ya revisaste y todavía no se habían cargado">
+      <i data-lucide="upload-cloud"></i> Cargar al servidor <span id="contador-pendientes-carga"></span>
+    </button>
+    <button id="boton-reiniciar-historico" title="Elimina el progreso acumulado del Excel histórico (queda un respaldo con fecha)">
+      <i data-lucide="trash-2"></i>
+    </button>
+    <div id="estado-ocr">
+      <span id="punto-ocr"></span>
+      <span id="texto-estado-ocr">verificando API de OCR…</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="panel">
+    <div id="zona-carga">
+      <i data-lucide="upload-cloud"></i>
+      <div><b>Arrastra una foto o PDF</b> del recibo de cobro, o haz clic para elegirlo.</div>
+      <div style="font-size:12px; margin-top:4px;">Acepta PDF (una o varias páginas), PNG, JPG, WEBP, BMP — máx. 30 MB</div>
+      <input type="file" id="entrada-archivo" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp">
+    </div>
+    <div id="mensaje-carga"></div>
+    <div id="barra-progreso"><div id="barra-progreso-relleno"></div></div>
+  </div>
+
+  <div class="panel" id="panel-resultados" style="display:none;">
+    <div class="barra-acciones">
+      <button id="boton-exportar"><i data-lucide="file-spreadsheet"></i> Exportar a Excel</button>
+      <button class="secundario" id="boton-nuevo"><i data-lucide="rotate-ccw"></i> Escanear otro documento</button>
+    </div>
+    <div class="envoltorio-tabla">
+      <table>
+        <thead>
+          <tr>
+            <th>Pág.</th>
+            <th>Motor</th>
+            <th>N Recibo</th>
+            <th>Fecha</th>
+            <th>Cliente</th>
+            <th>Código/RIF</th>
+            <th>Dirección fiscal</th>
+            <th>Monto</th>
+            <th>Cantidad (texto)</th>
+            <th>Concepto</th>
+            <th>Facturas referenciadas</th>
+            <th>Forma de pago</th>
+            <th>Confianza</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cuerpo-tabla"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+let ultimosResultados = [];
+
+function refrescarIconos() { if (window.lucide) lucide.createIcons(); }
+
+async function verificarEstadoOCR() {
+  const punto = document.getElementById("punto-ocr");
+  const texto = document.getElementById("texto-estado-ocr");
+  try {
+    const respuesta = await fetch("/api/estado-ocr");
+    const datos = await respuesta.json();
+    if (datos.conectado) {
+      punto.classList.add("ok");
+      const respaldo = datos.detalle.respaldo ? ` · respaldo: ${datos.detalle.respaldo}` : "";
+      texto.textContent = `OCR conectado (modelo: ${datos.detalle.modelo_vision || "?"}${respaldo})`;
+    } else {
+      throw new Error(datos.error || "sin conexión");
+    }
+  } catch (error) {
+    punto.classList.remove("ok");
+    texto.textContent = "API de OCR no disponible";
+  }
+}
+
+async function actualizarContadorHistorico() {
+  const texto = document.getElementById("texto-historico");
+  const botonCargar = document.getElementById("boton-cargar-servidor");
+  try {
+    const respuesta = await fetch("/api/historico/estado");
+    const datos = await respuesta.json();
+    texto.textContent = datos.existe ? `${datos.filas} extracción(es)` : "vacío todavía";
+
+    const pendientes = datos.filas_pendientes || 0;
+    const contadorPendientes = document.getElementById("contador-pendientes-carga");
+    if (contadorPendientes) contadorPendientes.textContent = pendientes > 0 ? `(${pendientes})` : "";
+    if (botonCargar) botonCargar.disabled = pendientes === 0;
+  } catch (error) {
+    texto.textContent = "?";
+  }
+}
+
+document.getElementById("boton-cargar-servidor").addEventListener("click", async () => {
+  const boton = document.getElementById("boton-cargar-servidor");
+  boton.disabled = true;
+  boton.innerHTML = `<i data-lucide="loader-circle" class="girando" style="width:13px;height:13px;"></i> Cargando…`;
+  refrescarIconos();
+  try {
+    const respuesta = await fetch("/api/historico/cargar_al_servidor", { method: "POST" });
+    const datos = await respuesta.json();
+    if (!respuesta.ok) throw new Error(datos.error || "No se pudo cargar al servidor");
+    boton.innerHTML = `<i data-lucide="check"></i> ${datos.filas_nuevas} nueva(s) cargada(s)`;
+    refrescarIconos();
+  } catch (error) {
+    alert(`Error: ${error.message}`);
+  } finally {
+    setTimeout(() => {
+      boton.innerHTML = `<i data-lucide="upload-cloud"></i> Cargar al servidor <span id="contador-pendientes-carga"></span>`;
+      refrescarIconos();
+      actualizarContadorHistorico();
+    }, 1800);
+  }
+});
+
+document.getElementById("boton-reiniciar-historico").addEventListener("click", async () => {
+  const texto = document.getElementById("texto-historico").textContent;
+  if (!confirm(`¿Eliminar el progreso del histórico (${texto})? Queda un respaldo con la fecha en /data, pero el contador vuelve a cero.`)) return;
+
+  const boton = document.getElementById("boton-reiniciar-historico");
+  boton.disabled = true;
+  try {
+    const respuesta = await fetch("/api/historico/reiniciar", { method: "POST" });
+    const datos = await respuesta.json();
+    if (!respuesta.ok) throw new Error(datos.error || "No se pudo reiniciar el histórico");
+    await actualizarContadorHistorico();
+  } catch (error) {
+    alert(`Error: ${error.message}`);
+  } finally {
+    boton.disabled = false;
+  }
+});
+
+const zonaCarga = document.getElementById("zona-carga");
+const entradaArchivo = document.getElementById("entrada-archivo");
+const mensajeCarga = document.getElementById("mensaje-carga");
+const panelResultados = document.getElementById("panel-resultados");
+const cuerpoTabla = document.getElementById("cuerpo-tabla");
+const barraProgreso = document.getElementById("barra-progreso");
+const barraProgresoRelleno = document.getElementById("barra-progreso-relleno");
+
+zonaCarga.addEventListener("click", () => entradaArchivo.click());
+zonaCarga.addEventListener("dragover", (e) => { e.preventDefault(); zonaCarga.classList.add("arrastrando"); });
+zonaCarga.addEventListener("dragleave", () => zonaCarga.classList.remove("arrastrando"));
+zonaCarga.addEventListener("drop", (e) => {
+  e.preventDefault();
+  zonaCarga.classList.remove("arrastrando");
+  if (e.dataTransfer.files.length) escanearArchivo(e.dataTransfer.files[0]);
+});
+entradaArchivo.addEventListener("change", () => {
+  if (entradaArchivo.files.length) escanearArchivo(entradaArchivo.files[0]);
+});
+
+function mensajeProgreso(texto) {
+  mensajeCarga.innerHTML = `<i data-lucide="loader-circle" class="girando" style="width:14px;height:14px;vertical-align:-2px;"></i> ${texto}`;
+  refrescarIconos();
+}
+
+async function escanearArchivo(archivo) {
+  ultimosResultados = [];
+  cuerpoTabla.innerHTML = "";
+  panelResultados.style.display = "block";
+  barraProgreso.classList.add("visible");
+  barraProgresoRelleno.style.width = "0%";
+  mensajeProgreso(`Preparando "${archivo.name}"…`);
+
+  const datosFormulario = new FormData();
+  datosFormulario.append("archivo", archivo);
+
+  try {
+    const respuesta = await fetch("/api/escanear", { method: "POST", body: datosFormulario });
+
+    if (!respuesta.ok || !respuesta.body) {
+      const datos = await respuesta.json().catch(() => ({}));
+      throw new Error(datos.error || "Error al escanear");
+    }
+
+    const lector = respuesta.body.getReader();
+    const decodificador = new TextDecoder();
+    let buffer = "";
+    let total = 0;
+    let procesadas = 0;
+
+    while (true) {
+      const { done, value } = await lector.read();
+      if (done) break;
+      buffer += decodificador.decode(value, { stream: true });
+
+      let indiceSalto;
+      while ((indiceSalto = buffer.indexOf("\n")) >= 0) {
+        const linea = buffer.slice(0, indiceSalto).trim();
+        buffer = buffer.slice(indiceSalto + 1);
+        if (!linea) continue;
+        const evento = JSON.parse(linea);
+
+        if (evento.evento === "inicio") {
+          total = evento.total_paginas;
+          mensajeProgreso(`Procesando página 0 de ${total}…`);
+        } else if (evento.evento === "pagina") {
+          procesadas++;
+          ultimosResultados.push(evento.resultado);
+          agregarFila(evento.resultado);
+          barraProgresoRelleno.style.width = `${(procesadas / total) * 100}%`;
+          mensajeProgreso(`Procesando página ${procesadas} de ${total}…`);
+          if (evento.resultado.ok) actualizarContadorHistorico();
+        } else if (evento.evento === "fin") {
+          mensajeCarga.textContent = `Listo: ${procesadas} página(s) procesada(s).`;
+          barraProgreso.classList.remove("visible");
+        }
+      }
+    }
+  } catch (error) {
+    mensajeCarga.textContent = `Error: ${error.message}`;
+    barraProgreso.classList.remove("visible");
+  }
+}
+
+function celdaConfianza(r) {
+  const conf = r.confianza || {};
+  const validado = Boolean(conf.validado);
+  const guardado = Boolean(r.guardado_en_historico);
+  const clase = validado ? "validado" : "pendiente";
+  const detalle = `Formato: ${conf.formato ?? "?"}% · Datos: ${conf.datos ?? "?"}%`;
+  const estadoGuardado = guardado
+    ? `<span style="color:#1fa855; font-size:10.5px;">✓ En histórico</span>`
+    : `<button class="boton-guardar-manual" data-guardar-manual="${r.pagina}"><i data-lucide="save"></i> Agregar al histórico</button>`;
+  return `
+    <div class="chip-confianza ${clase}" title="Umbral de auto-validación: 70% (70% formato + 30% legibilidad)">
+      <span class="indice">${conf.indice ?? "?"}%</span>
+      <span class="detalle">${detalle}</span>
+      ${estadoGuardado}
+    </div>`;
+}
+
+function filaResultado(r) {
+  if (!r.ok) {
+    return `<tr class="fila-error" data-pagina="${r.pagina}"><td>${r.pagina}</td><td colspan="13">⚠️ ${r.error}</td></tr>`;
+  }
+  const c = r.campos;
+  const idTexto = `crudo-${r.pagina}`;
+  const esRespaldo = (r.motor || "").includes("respaldo");
+  return `
+    <tr data-pagina="${r.pagina}">
+      <td>${r.pagina}</td>
+      <td><span class="chip-motor ${esRespaldo ? "respaldo" : ""}" title="${esRespaldo ? "Gemini estaba saturado, respondió el respaldo" : ""}">${r.motor || "—"}</span></td>
+      <td><input type="text" data-campo="numero_recibo" value="${c.numero_recibo || ""}" placeholder="—"></td>
+      <td><input type="text" data-campo="fecha" value="${c.fecha || ""}" placeholder="—"></td>
+      <td><input type="text" data-campo="cliente_nombre" value="${c.cliente_nombre || ""}" placeholder="—"></td>
+      <td><input type="text" data-campo="cliente_codigo_o_rif" value="${c.cliente_codigo_o_rif || ""}" placeholder="—"></td>
+      <td><input type="text" data-campo="direccion_fiscal" value="${c.direccion_fiscal || ""}" placeholder="—"></td>
+      <td><input type="text" data-campo="monto" value="${c.monto || ""}" placeholder="—"></td>
+      <td><input type="text" data-campo="cantidad_texto" value="${c.cantidad_texto || ""}" placeholder="—"></td>
+      <td><input type="text" data-campo="concepto" value="${(c.concepto || "").replace(/"/g, "&quot;")}" placeholder="—"></td>
+      <td><input type="text" data-campo="facturas_referenciadas" value="${c.facturas_referenciadas || ""}" placeholder="—"></td>
+      <td><input type="text" data-campo="forma_pago" value="${c.forma_pago || ""}" placeholder="—"></td>
+      <td class="celda-confianza">${celdaConfianza(r)}</td>
+      <td><span class="detalle-toggle" data-toggle="${idTexto}">ver texto OCR</span></td>
+    </tr>
+    <tr>
+      <td colspan="14" style="border-bottom:1px solid var(--borde); padding:0 10px;">
+        <div class="texto-crudo" id="${idTexto}">${(r.texto_ocr || "(sin texto)").replace(/</g, "&lt;")}</div>
+      </td>
+    </tr>
+  `;
+}
+
+function activarFila(pagina) {
+  const fila = cuerpoTabla.querySelector(`tr[data-pagina="${pagina}"]`);
+  if (!fila) return;
+  fila.classList.add("fila-nueva");
+
+  const toggle = fila.querySelector("[data-toggle]");
+  if (toggle) {
+    toggle.addEventListener("click", () => {
+      document.getElementById(toggle.dataset.toggle).classList.toggle("visible");
+    });
+  }
+
+  // Los campos son editables — cualquier corrección manual se refleja en
+  // ultimosResultados antes de exportar a Excel.
+  fila.querySelectorAll("input[data-campo]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+      if (resultado) resultado.campos[input.dataset.campo] = input.value;
+    });
+  });
+
+  const botonGuardar = fila.querySelector("[data-guardar-manual]");
+  if (botonGuardar) {
+    botonGuardar.addEventListener("click", () => guardarManual(pagina));
+  }
+}
+
+async function guardarManual(pagina) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado) return;
+
+  const fila = cuerpoTabla.querySelector(`tr[data-pagina="${pagina}"]`);
+  const boton = fila ? fila.querySelector("[data-guardar-manual]") : null;
+  if (boton) {
+    boton.disabled = true;
+    boton.innerHTML = `<i data-lucide="loader-circle" class="girando" style="width:11px;height:11px;"></i> Guardando…`;
+    refrescarIconos();
+  }
+
+  try {
+    const respuesta = await fetch("/api/historico/guardar_manual", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        archivo: resultado.archivo,
+        motor: resultado.motor,
+        campos: resultado.campos,
+        confianza: resultado.confianza,
+      }),
+    });
+    const datos = await respuesta.json();
+    if (!respuesta.ok) throw new Error(datos.error || "No se pudo guardar en el histórico");
+
+    resultado.guardado_en_historico = true;
+    const celda = fila ? fila.querySelector(".celda-confianza") : null;
+    if (celda) celda.innerHTML = celdaConfianza(resultado);
+    refrescarIconos();
+    actualizarContadorHistorico();
+  } catch (error) {
+    alert(`Error: ${error.message}`);
+    if (boton) {
+      boton.disabled = false;
+      boton.innerHTML = `<i data-lucide="save"></i> Agregar al histórico`;
+      refrescarIconos();
+    }
+  }
+}
+
+function agregarFila(resultado) {
+  cuerpoTabla.insertAdjacentHTML("beforeend", filaResultado(resultado));
+  refrescarIconos();
+  activarFila(resultado.pagina);
+}
+
+document.getElementById("boton-exportar").addEventListener("click", async () => {
+  const respuesta = await fetch("/api/exportar_excel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resultados: ultimosResultados }),
+  });
+  if (!respuesta.ok) {
+    alert("No se pudo exportar a Excel.");
+    return;
+  }
+  const blob = await respuesta.blob();
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = "abonos.xlsx";
+  enlace.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById("boton-nuevo").addEventListener("click", () => {
+  panelResultados.style.display = "none";
+  mensajeCarga.textContent = "";
+  entradaArchivo.value = "";
+  ultimosResultados = [];
+});
+
+refrescarIconos();
+verificarEstadoOCR();
+actualizarContadorHistorico();
+</script>
+</body>
+</html>

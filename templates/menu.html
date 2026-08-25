@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Módulos — Cristmedicals</title>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>
+  :root {
+    --panel-alt: #f0f2f5;
+    --panel: #ffffff;
+    --borde: #e9edef;
+    --texto: #111b21;
+    --texto-tenue: #667781;
+    --acento: #00a884;
+    --acento-oscuro: #008069;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--panel-alt);
+    color: var(--texto);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .contenedor { width: 100%; max-width: 760px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.subtitulo { color: var(--texto-tenue); margin: 0 0 24px; font-size: 13.5px; }
+  .grilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  a.tarjeta-modulo {
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    padding: 20px;
+    text-decoration: none;
+    color: var(--texto);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+  a.tarjeta-modulo:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.08); border-color: var(--acento); }
+  .icono-modulo {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    background: var(--acento);
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .titulo-modulo { font-weight: 600; font-size: 15px; }
+  .descripcion-modulo { font-size: 12.5px; color: var(--texto-tenue); line-height: 1.4; }
+</style>
+</head>
+<body>
+
+<div class="contenedor">
+  <h1>Módulos</h1>
+  <p class="subtitulo">Elige con cuál trabajar.</p>
+  <div class="grilla" id="grilla-modulos"></div>
+</div>
+
+<script>
+if (window.lucide) lucide.createIcons();
+
+const MODULOS = [
+  {
+    nombre: "Central Telefónica IA",
+    descripcion: "Transcripción y clasificación de llamadas, dashboard de ejecutivos.",
+    icono: "phone-call",
+    puerto: 5010,
+  },
+  {
+    nombre: "Escáner de Retenciones IVA",
+    descripcion: "Extrae fecha, cliente, factura y monto de comprobantes de retención de IVA.",
+    icono: "scan-text",
+    puerto: 5030,
+  },
+  {
+    nombre: "Escáner de Recibos de Cobro",
+    descripcion: "Extrae cliente, factura(s) referenciadas y monto de recibos de abono.",
+    icono: "receipt",
+    puerto: 5041,
+  },
+  {
+    nombre: "OCR-PS",
+    descripcion: "Lee el número de factura de compras de psicotrópicos, listo para copiar a la base de datos.",
+    icono: "pill",
+    puerto: 5042,
+  },
+];
+
+const grilla = document.getElementById("grilla-modulos");
+grilla.innerHTML = MODULOS.map((m) => `
+  <a class="tarjeta-modulo" href="//${window.location.hostname}:${m.puerto}/">
+    <div class="icono-modulo"><i data-lucide="${m.icono}"></i></div>
+    <div class="titulo-modulo">${m.nombre}</div>
+    <div class="descripcion-modulo">${m.descripcion}</div>
+  </a>
+`).join("");
+if (window.lucide) lucide.createIcons();
+</script>
+</body>
+</html>
