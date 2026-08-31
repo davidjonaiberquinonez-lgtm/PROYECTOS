@@ -1,26 +1,32 @@
 """
-ocr_ps_core.py — Inteligencia de extracción OCR para "OCR-PS" (base de
-datos de Psicotrópicos), sin ningún framework web encima.
+ocr_pedidos_core.py — Inteligencia de extracción OCR de "Pedidos" (notas de
+entrega manuscritas de un cliente/sucursal), sin ningún framework web
+encima.
 
-Mismo patrón que ocr_retenciones_core.py y ocr_abonos_core.py (Gemini +
-respaldo OpenRouter, mismo manejo de PDF/imagen), pero para el caso más
-simple de los tres: el gerente de compras pasa las facturas de productos
-psicotrópicos y solo hace falta UN dato por factura — el número de
-factura — para cruzarlo contra la base de datos de control de
-psicotrópicos.
+Mismo patrón que ocr_ps_core.py y ocr_abonos_core.py (DeepSeek + respaldo
+Gemini + respaldo final OpenRouter, mismo manejo de PDF/imagen), pero para
+un documento distinto: una nota manuscrita donde se listan uno o más
+artículos pedidos, no un dato único por página. Por eso la forma de
+"campos" acá NO es un diccionario plano como en los otros módulos — es:
 
-Campo que extrae, por cada página/imagen:
-  - numero_factura   El número de factura, como entero (ej. 174857). Si
-                      la factura no tiene un número identificable, null.
+  - sede       "Sucursal" | "Principal" | null — para qué sede es el
+               pedido, según lo que esté escrito/marcado en la nota.
+  - items      Lista de artículos pedidos, en el mismo orden en que
+               aparecen escritos. Cada ítem:
+                 - articulo    Nombre y descripción del artículo, tal cual
+                               está escrito.
+                 - cantidad    Cantidad solicitada, tal cual está escrita
+                               (no se fuerza a número — la letra manuscrita
+                               puede traer "x2", "2 cajas", etc.).
+                 - pediatrico  true SOLO si al lado de ESE artículo
+                               puntual la nota dice "pediátrico" (o una
+                               abreviación clara) — false en cualquier
+                               otro caso, nunca se asume.
 
-Motor principal: DeepSeek (deepseek-v4-flash-vision-exp) — modelo de
-visión experimental de DeepSeek, comprime cada imagen a ~800x800px/384
-tokens antes de leerla, pero para un solo número de factura (dato chico,
-casi siempre el más prominente del encabezado) ese recorte no debería
-pesar tanto como en documentos con letra chica en varios campos. Si
-falla, respaldo automático a Gemini (gemini-3.6-flash), y si ese también
-falla, a OpenRouter (dots-studio/dots-3-note-preview, gratis). El campo
-"motor" del resultado indica cuál de los tres respondió.
+Motor principal: DeepSeek (deepseek-v4-flash-vision-exp). Si falla,
+respaldo automático a Gemini (gemini-3.6-flash), y si ese también falla, a
+OpenRouter (dots-studio/dots-3-note-preview, gratis). El campo "motor" del
+resultado indica cuál de los tres respondió.
 """
 
 import base64
@@ -85,23 +91,35 @@ class ErrorOCR(Exception):
     pass
 
 
-PROMPT_SISTEMA = """Actúa como un sistema de OCR ultra enfocado. Tu único trabajo es encontrar el NÚMERO DE FACTURA en la imagen de una factura de compra (de un proveedor de productos psicotrópicos/farmacéuticos) y devolverlo — nada más.
+PROMPT_SISTEMA = """Actúa como un sistema de OCR especializado en notas de pedido manuscritas de una empresa farmacéutica venezolana (Crist Medicals, C.A.).
 
-DÓNDE BUSCAR: el número de factura suele estar cerca de las palabras "Factura", "Factura N°", "Nro. Factura", "Invoice", "N° de Control" (si hay varios números parecidos, el de "N° de Control" NO es el que buscas — preferí el que esté etiquetado como "Factura"). Es casi siempre la referencia numérica más prominente arriba del documento, junto al logo o encabezado del proveedor.
+CONTEXTO DEL DOCUMENTO: es una nota manuscrita donde un cliente o una sucursal anota a mano uno o más artículos que necesita pedir, generalmente en una lista/tabla informal (un renglón por artículo, con su cantidad).
 
-REGLAS:
-1. Devuelve el número de factura como un ENTERO, sin ceros a la izquierda, sin guiones, puntos ni espacios (ej. si en la factura dice "N° 00174857" o "174.857", el valor es 174857).
-2. Si hay letras o un prefijo pegado al número (ej. "A-00174857" o "FAC-174857"), devuelve solo la parte numérica.
-3. Si genuinamente no encontrás ningún número de factura en la imagen, usa null — no inventes ni adivines un número.
+Tu tarea es extraer EXACTAMENTE esta estructura:
+
+1. "sede": indica si el pedido es para una SUCURSAL o para la SEDE/CASA PRINCIPAL — busca esa palabra escrita o marcada en algún lugar de la nota (encabezado, esquina, un círculo/check junto a una de las dos opciones). Devuelve exactamente el texto "Sucursal" o "Principal" según corresponda. Si la nota no lo indica en ningún lado, usa null — no lo asumas ni lo adivines.
+
+2. "items": una lista con TODOS los artículos pedidos, en el mismo orden en que aparecen escritos en la nota — no te saltees ninguno, incluso si algún renglón tiene letra difícil. Cada ítem de la lista tiene:
+   - "articulo": el nombre y la descripción del artículo, tal cual está escrito (ej. "Amoxicilina 500mg susp", "Diclofenac gel", "Suero fisiológico 250ml").
+   - "cantidad": la cantidad solicitada de ese artículo puntual, tal cual está escrita — puede ser un número solo, o venir con una unidad ("2 cajas", "x3", "1 caja y media"). Transcribila tal cual, sin inventar una unidad que no esté escrita.
+   - "pediatrico": true SOLO si justo al lado de la descripción de ESE artículo aparece escrita la palabra "pediátrico"/"pediatrico" o una abreviación clara ("ped.", "PED"). Si no aparece nada de eso junto a ese renglón puntual, el valor es false — nunca marques true por asociación con otro renglón ni por suposición.
+
+REGLAS GENERALES:
+- Si una palabra o parte de un artículo es genuinamente ilegible, transcribe lo que sí se distingue con claridad y no inventes el resto.
+- Si la nota no tiene ningún artículo legible, "items" debe ser una lista vacía: [].
+- No inventes artículos, cantidades ni la sede si no están escritos en la imagen.
 
 FORMATO DE SALIDA:
-Devuelve ÚNICAMENTE un objeto JSON válido con esta forma exacta, sin texto adicional, sin bloques de código markdown (```json) y sin explicaciones:
+Devuelve ÚNICAMENTE un JSON válido con esta forma exacta, sin texto antes ni después, sin bloques de código markdown (```json) y sin explicaciones:
 {
-  "numero_factura": 174857
+  "sede": "Sucursal",
+  "items": [
+    {"articulo": "...", "cantidad": "...", "pediatrico": false}
+  ]
 }
-Si no se encuentra el número, usa: {"numero_factura": null}"""
+Si no se puede determinar la sede, usa "sede": null. Si no hay artículos legibles, usa "items": []."""
 
-CAMPOS_ESPERADOS = ("numero_factura",)
+CAMPOS_ESPERADOS = ("sede", "items")
 
 
 def _extraer_json(texto):
@@ -118,25 +136,53 @@ def _normalizar_clave(clave):
     return re.sub(r"[^a-z0-9]", "", clave.lower())
 
 
-def _a_numero_factura(valor):
-    """Tolera que el modelo devuelva el número como int, como string
-    ("174857", "N° 174857", "174.857") o con basura alrededor — se queda
-    solo con los dígitos. Vacío/no numérico -> None, nunca un error que
-    tumbe el resto de la extracción."""
+def _a_booleano(valor):
+    """Tolera que "pediatrico" venga como bool real, string ("true"/"si"),
+    o cualquier otra cosa rara del respaldo de OpenRouter — ante cualquier
+    duda, false (mismo criterio "no inventes" del resto del prompt: si no
+    es un true inequívoco, no se marca pediátrico)."""
+    if isinstance(valor, bool):
+        return valor
+    if valor is None:
+        return False
+    return str(valor).strip().lower() in ("true", "si", "sí", "1", "yes", "x")
+
+
+def _texto_o_none(valor):
     if valor is None:
         return None
-    if isinstance(valor, (int, float)):
-        return int(valor)
-    solo_digitos = re.sub(r"\D", "", str(valor))
-    return int(solo_digitos) if solo_digitos else None
+    texto = str(valor).strip()
+    return texto or None
+
+
+def _mapear_item(item):
+    if not isinstance(item, dict):
+        return None
+    normalizado = {_normalizar_clave(clave): valor for clave, valor in item.items()}
+    articulo = _texto_o_none(normalizado.get(_normalizar_clave("articulo")))
+    if not articulo:
+        return None
+    return {
+        "articulo": articulo,
+        "cantidad": _texto_o_none(normalizado.get(_normalizar_clave("cantidad"))),
+        "pediatrico": _a_booleano(normalizado.get(_normalizar_clave("pediatrico"))),
+    }
 
 
 def _mapear_campos(datos):
-    """Arma el diccionario de campos esperados tolerando variaciones de
-    nombre de clave (mismo criterio que los otros módulos de OCR)."""
+    """Arma {"sede": ..., "items": [...]} tolerando variaciones de nombre
+    de clave — mismo criterio que los otros módulos de OCR, adaptado acá
+    porque la forma no es un diccionario plano sino sede + lista."""
     normalizado = {_normalizar_clave(clave): valor for clave, valor in datos.items()}
-    crudo = normalizado.get(_normalizar_clave("numero_factura"))
-    return {"numero_factura": _a_numero_factura(crudo)}
+    sede = _texto_o_none(normalizado.get(_normalizar_clave("sede")))
+    items_crudos = normalizado.get(_normalizar_clave("items"))
+    items = []
+    if isinstance(items_crudos, list):
+        for item_crudo in items_crudos:
+            item = _mapear_item(item_crudo)
+            if item is not None:
+                items.append(item)
+    return {"sede": sede, "items": items}
 
 
 def consultar_vision_google(imagen_bytes):
@@ -146,13 +192,13 @@ def consultar_vision_google(imagen_bytes):
         "systemInstruction": {"parts": [{"text": PROMPT_SISTEMA}]},
         "contents": [{
             "parts": [
-                {"text": "Extrae el número de factura de esta imagen siguiendo exactamente las reglas. Responde solo con el JSON, nada más."},
+                {"text": "Extrae la sede y la lista completa de artículos pedidos de esta imagen siguiendo exactamente las reglas. Responde solo con el JSON, nada más."},
                 {"inline_data": {"mime_type": "image/png", "data": b64}},
             ],
         }],
         "generationConfig": {
             "temperature": 0.0,
-            "maxOutputTokens": 512,
+            "maxOutputTokens": 4096,
             "responseMimeType": "application/json",
         },
     }
@@ -190,14 +236,15 @@ def consultar_vision_openrouter(imagen_bytes):
     payload = {
         "model": MODELO_VISION_OPENROUTER,
         "temperature": 0.0,
-        "max_tokens": 2048,  # subido de 512: ver comentario en consultar_vision_deepseek
+        "max_tokens": 6000,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": PROMPT_SISTEMA},
             {"role": "user", "content": [
                 {"type": "text", "text": (
-                    "Extrae el número de factura de esta imagen siguiendo exactamente las reglas. Responde "
-                    "solo con el JSON, nada más. Usa exactamente esta clave: numero_factura."
+                    "Extrae la sede y la lista completa de artículos pedidos de esta imagen siguiendo exactamente "
+                    "las reglas. Responde solo con el JSON, nada más. Usa exactamente estas claves: sede, items "
+                    "(cada ítem con articulo, cantidad, pediatrico)."
                 )},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
             ]},
@@ -232,14 +279,14 @@ def consultar_vision_deepseek(imagen_bytes):
         "temperature": 0.0,
         "max_tokens": 8192,  # deepseek-v4-flash-vision-exp razona antes de responder
         # (campo "reasoning_content" aparte de "content", confirmado en vivo el 31/08:
-        # ~600 tokens de razonamiento incluso con una imagen en blanco) — con 512 el
-        # modelo gastaba TODO el tope pensando y nunca llegaba a escribir el JSON:
+        # ~600 tokens de razonamiento incluso con una imagen en blanco) — con 2048 el
+        # modelo podía gastar todo el tope pensando y nunca llegar a escribir el JSON:
         # consumía tokens de entrada/salida igual, pero "content" quedaba vacío.
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": PROMPT_SISTEMA},
             {"role": "user", "content": [
-                {"type": "text", "text": "Extrae el número de factura de esta imagen siguiendo exactamente las reglas. Responde solo con el JSON, nada más."},
+                {"type": "text", "text": "Extrae la sede y la lista completa de artículos pedidos de esta imagen siguiendo exactamente las reglas. Responde solo con el JSON, nada más."},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
             ]},
         ],
@@ -282,10 +329,7 @@ def consultar_vision_deepseek(imagen_bytes):
 def consultar_vision(imagen_bytes):
     """DeepSeek primero (más barato); si falla o no está configurado, se
     reintenta con Gemini, y si ese también falla, con OpenRouter. `motor`
-    en el resultado indica cuál de los tres respondió.
-
-    TEMPORAL: si la precisión de DeepSeek en este número clave no
-    convence, volver a poner a Gemini primero."""
+    en el resultado indica cuál de los tres respondió."""
     try:
         campos, texto = consultar_vision_deepseek(imagen_bytes)
         return campos, texto, "DeepSeek"
@@ -316,7 +360,7 @@ def procesar_imagen(imagen_bytes, nombre_archivo, numero_pagina):
 def procesar_documento(contenido, nombre_archivo, extension):
     """Punto de entrada de alto nivel: recibe los bytes crudos de un
     archivo (PDF o imagen) y su extensión, y devuelve la lista de
-    resultados (uno por página)."""
+    resultados (uno por página). No sabe nada de HTTP ni de Flask."""
     if extension not in EXTENSIONES_PERMITIDAS:
         raise ValueError(f"Extensión no soportada: .{extension}")
 

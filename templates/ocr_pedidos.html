@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pedidos OCR — Notas de entrega</title>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>
+  :root {
+    --fondo: #ffffff;
+    --panel: #ffffff;
+    --panel-alt: #f3f1fb;
+    --borde: #e6e1f7;
+    --texto: #1a1533;
+    --texto-tenue: #6f6690;
+    --acento: #7c5cff;
+    --acento-oscuro: #5b3fd6;
+    --acento-clara: #efeafd;
+    --negativa: #e0403e;
+    --positiva: #1fa855;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--panel-alt);
+    color: var(--texto);
+  }
+  header {
+    background: linear-gradient(135deg, var(--acento-oscuro), var(--acento));
+    color: white;
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  header h1 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+  header .subtitulo { font-size: 11.5px; opacity: 0.8; font-weight: 400; margin-left: 2px; }
+  a.enlace-modulo {
+    color: rgba(255,255,255,0.75);
+    font-size: 12px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  a.enlace-modulo:hover { color: white; }
+  #estado-ocr { font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+  #enlace-historico {
+    font-size: 12.5px;
+    color: white;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.16);
+    border-radius: 999px;
+    padding: 5px 12px;
+    transition: background 0.15s ease;
+  }
+  #enlace-historico:hover { background: rgba(255,255,255,0.28); }
+  #enlace-historico i { width: 14px; height: 14px; }
+  #boton-reiniciar-historico {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.16);
+    color: white;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  #boton-reiniciar-historico:hover { background: var(--negativa); }
+  #boton-reiniciar-historico i { width: 14px; height: 14px; }
+  #punto-ocr { width: 8px; height: 8px; border-radius: 50%; background: #ffb3b0; }
+  #punto-ocr.ok { background: #b6f0a1; }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+
+  #zona-carga {
+    border: 2px dashed var(--borde);
+    border-radius: 12px;
+    padding: 36px 30px;
+    text-align: center;
+    color: var(--texto-tenue);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  #zona-carga.arrastrando { border-color: var(--acento); background: var(--acento-clara); }
+  #zona-carga svg { width: 36px; height: 36px; margin-bottom: 8px; opacity: 0.55; color: var(--acento-oscuro); }
+  #entrada-archivo { display: none; }
+
+  button {
+    background: var(--acento);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-size: 13.5px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  button:hover { filter: brightness(1.06); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secundario {
+    background: var(--panel-alt);
+    color: var(--texto);
+    border: 1px solid var(--borde);
+  }
+  button.exito { background: var(--positiva); }
+
+  #mensaje-carga { font-size: 13px; margin-top: 10px; color: var(--texto-tenue); }
+
+  #barra-progreso {
+    display: none;
+    height: 6px;
+    background: var(--panel-alt);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  #barra-progreso.visible { display: block; }
+  #barra-progreso-relleno {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--acento-oscuro), var(--acento));
+    border-radius: 999px;
+    transition: width 0.35s ease;
+  }
+
+  .barra-acciones { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .contador-resultados { font-size: 12.5px; color: var(--texto-tenue); margin-left: auto; }
+
+  .girando { animation: girar 1s linear infinite; }
+  @keyframes girar { to { transform: rotate(360deg); } }
+
+  .lista-pedidos { display: flex; flex-direction: column; gap: 14px; }
+  .tarjeta-pedido {
+    background: var(--panel-alt);
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    padding: 16px;
+    animation: aparecer 0.3s ease;
+  }
+  @keyframes aparecer {
+    from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .tarjeta-pedido.fila-error { background: rgba(224,64,62,0.06); border-color: rgba(224,64,62,0.3); }
+  .tarjeta-pedido .texto-error { font-size: 12px; color: var(--negativa); }
+
+  .cabecera-tarjeta {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--texto-tenue);
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+  }
+  .chip-motor {
+    display: inline-block; font-size: 9.5px; padding: 1px 6px; border-radius: 999px;
+    background: var(--acento-clara); color: var(--acento-oscuro); white-space: nowrap; font-weight: 600;
+  }
+  .chip-motor.respaldo { background: rgba(224,64,62,0.1); color: var(--negativa); }
+
+  .fila-sede { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .fila-sede label { font-size: 12.5px; font-weight: 600; color: var(--texto-tenue); }
+  .select-sede {
+    border: 1px solid var(--borde); background: white; border-radius: 6px; padding: 6px 10px;
+    font-size: 13px; font-family: "Segoe UI", system-ui, sans-serif; color: var(--texto); font-weight: 600;
+  }
+  .select-sede.sin-elegir { color: var(--texto-tenue); font-weight: 400; }
+
+  table.tabla-items { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
+  table.tabla-items thead th {
+    text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em;
+    color: var(--texto-tenue); padding: 8px 10px; border-bottom: 1px solid var(--borde);
+  }
+  table.tabla-items td { padding: 6px 8px; border-bottom: 1px solid var(--panel-alt); vertical-align: middle; }
+  table.tabla-items tr:last-child td { border-bottom: none; }
+  .input-item {
+    width: 100%; border: 1px solid transparent; background: transparent; border-radius: 6px;
+    padding: 5px 6px; font-size: 12.5px; font-family: "Segoe UI", system-ui, sans-serif; color: var(--texto);
+  }
+  .input-item:hover, .input-item:focus { border-color: var(--borde); background: var(--panel-alt); outline: none; }
+  .input-item.vacio-articulo::placeholder { color: var(--negativa); }
+  .input-cantidad { width: 90px; }
+  .celda-pediatrico { text-align: center; }
+  .celda-pediatrico input { width: 16px; height: 16px; cursor: pointer; }
+  .boton-quitar-item {
+    background: none; border: none; padding: 4px; cursor: pointer; color: var(--texto-tenue); display: inline-flex;
+  }
+  .boton-quitar-item:hover { color: var(--negativa); }
+  .boton-quitar-item i { width: 14px; height: 14px; }
+  .boton-agregar-item {
+    margin-top: 10px; background: transparent; color: var(--acento-oscuro); border: 1px dashed var(--borde);
+    font-size: 12px; padding: 6px 12px;
+  }
+  .boton-agregar-item:hover { background: var(--acento-clara); filter: none; }
+  .sin-items { font-size: 12px; color: var(--texto-tenue); padding: 10px 4px; font-style: italic; }
+  .archivo-origen { font-size: 11px; color: var(--texto-tenue); margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><i data-lucide="clipboard-list"></i> Pedidos OCR <span class="subtitulo">— notas de entrega manuscritas</span></h1>
+  <div style="display:flex; align-items:center; gap:14px;">
+    <a class="enlace-modulo" href="/"><i data-lucide="pill"></i> OCR-PS</a>
+    <a class="enlace-modulo" href="/menu"><i data-lucide="layout-grid"></i> Otros módulos</a>
+    <a href="/api/pedidos/historico/descargar" id="enlace-historico" title="Descarga el Excel con todos los artículos guardados hasta ahora">
+      <i data-lucide="database"></i> Histórico: <span id="texto-historico">—</span>
+    </a>
+    <button id="boton-reiniciar-historico" title="Elimina el progreso acumulado del Excel histórico (queda un respaldo con fecha)">
+      <i data-lucide="trash-2"></i>
+    </button>
+    <div id="estado-ocr">
+      <span id="punto-ocr"></span>
+      <span id="texto-estado-ocr">verificando API de OCR…</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="panel">
+    <div id="zona-carga">
+      <i data-lucide="scan-line"></i>
+      <div><b>Arrastra las notas de pedido</b> (foto o PDF), o haz clic para elegirlas.</div>
+      <div style="font-size:12px; margin-top:4px;">Un PDF de varias páginas cuenta como varias notas — se lee cada una por separado. PNG, JPG, WEBP, BMP también. Máx. 30 MB.</div>
+      <input type="file" id="entrada-archivo" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp">
+    </div>
+    <div id="mensaje-carga"></div>
+    <div id="barra-progreso"><div id="barra-progreso-relleno"></div></div>
+  </div>
+
+  <div class="panel" id="panel-resultados" style="display:none;">
+    <div class="barra-acciones">
+      <button id="boton-exportar"><i data-lucide="file-spreadsheet"></i> Exportar a Excel</button>
+      <button class="secundario" id="boton-nuevo"><i data-lucide="rotate-ccw"></i> Escanear otras notas</button>
+      <span class="contador-resultados" id="contador-resultados"></span>
+    </div>
+    <div class="lista-pedidos" id="lista-pedidos"></div>
+  </div>
+</main>
+
+<script>
+let ultimosResultados = [];
+
+function refrescarIconos() { if (window.lucide) lucide.createIcons(); }
+
+async function verificarEstadoOCR() {
+  const punto = document.getElementById("punto-ocr");
+  const texto = document.getElementById("texto-estado-ocr");
+  try {
+    const respuesta = await fetch("/api/pedidos/estado-ocr");
+    const datos = await respuesta.json();
+    if (datos.conectado) {
+      punto.classList.add("ok");
+      const respaldo = datos.detalle.respaldo ? ` · respaldo: ${datos.detalle.respaldo}` : "";
+      texto.textContent = `OCR conectado (modelo: ${datos.detalle.modelo_vision || "?"}${respaldo})`;
+    } else {
+      throw new Error(datos.error || "sin conexión");
+    }
+  } catch (error) {
+    punto.classList.remove("ok");
+    texto.textContent = "API de OCR no disponible";
+  }
+}
+
+async function actualizarContadorHistorico() {
+  const texto = document.getElementById("texto-historico");
+  try {
+    const respuesta = await fetch("/api/pedidos/historico/estado");
+    const datos = await respuesta.json();
+    texto.textContent = datos.existe ? `${datos.filas} artículo(s)` : "vacío todavía";
+  } catch (error) {
+    texto.textContent = "?";
+  }
+}
+
+document.getElementById("boton-reiniciar-historico").addEventListener("click", async () => {
+  const texto = document.getElementById("texto-historico").textContent;
+  if (!confirm(`¿Eliminar el progreso del histórico (${texto})? Queda un respaldo con la fecha en /data, pero el contador vuelve a cero.`)) return;
+
+  const boton = document.getElementById("boton-reiniciar-historico");
+  boton.disabled = true;
+  try {
+    const respuesta = await fetch("/api/pedidos/historico/reiniciar", { method: "POST" });
+    const datos = await respuesta.json();
+    if (!respuesta.ok) throw new Error(datos.error || "No se pudo reiniciar el histórico");
+    await actualizarContadorHistorico();
+  } catch (error) {
+    alert(`Error: ${error.message}`);
+  } finally {
+    boton.disabled = false;
+  }
+});
+
+const zonaCarga = document.getElementById("zona-carga");
+const entradaArchivo = document.getElementById("entrada-archivo");
+const mensajeCarga = document.getElementById("mensaje-carga");
+const panelResultados = document.getElementById("panel-resultados");
+const listaPedidos = document.getElementById("lista-pedidos");
+const contadorResultados = document.getElementById("contador-resultados");
+const barraProgreso = document.getElementById("barra-progreso");
+const barraProgresoRelleno = document.getElementById("barra-progreso-relleno");
+
+zonaCarga.addEventListener("click", () => entradaArchivo.click());
+zonaCarga.addEventListener("dragover", (e) => { e.preventDefault(); zonaCarga.classList.add("arrastrando"); });
+zonaCarga.addEventListener("dragleave", () => zonaCarga.classList.remove("arrastrando"));
+zonaCarga.addEventListener("drop", (e) => {
+  e.preventDefault();
+  zonaCarga.classList.remove("arrastrando");
+  if (e.dataTransfer.files.length) escanearArchivo(e.dataTransfer.files[0]);
+});
+entradaArchivo.addEventListener("change", () => {
+  if (entradaArchivo.files.length) escanearArchivo(entradaArchivo.files[0]);
+});
+
+function mensajeProgreso(texto) {
+  mensajeCarga.innerHTML = `<i data-lucide="loader-circle" class="girando" style="width:14px;height:14px;vertical-align:-2px;"></i> ${texto}`;
+  refrescarIconos();
+}
+
+function escHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = String(s ?? "");
+  return d.innerHTML;
+}
+
+function actualizarContador() {
+  const totalItems = ultimosResultados.reduce((acc, r) => acc + (r.ok ? (r.campos.items || []).length : 0), 0);
+  contadorResultados.textContent = `${totalItems} artículo(s) en ${ultimosResultados.length} nota(s)`;
+}
+
+async function escanearArchivo(archivo) {
+  ultimosResultados = [];
+  listaPedidos.innerHTML = "";
+  panelResultados.style.display = "block";
+  barraProgreso.classList.add("visible");
+  barraProgresoRelleno.style.width = "0%";
+  mensajeProgreso(`Preparando "${archivo.name}"…`);
+
+  const datosFormulario = new FormData();
+  datosFormulario.append("archivo", archivo);
+
+  try {
+    const respuesta = await fetch("/api/pedidos/escanear", { method: "POST", body: datosFormulario });
+
+    if (!respuesta.ok || !respuesta.body) {
+      const datos = await respuesta.json().catch(() => ({}));
+      throw new Error(datos.error || "Error al escanear");
+    }
+
+    const lector = respuesta.body.getReader();
+    const decodificador = new TextDecoder();
+    let buffer = "";
+    let total = 0;
+    let procesadas = 0;
+
+    while (true) {
+      const { done, value } = await lector.read();
+      if (done) break;
+      buffer += decodificador.decode(value, { stream: true });
+
+      let indiceSalto;
+      while ((indiceSalto = buffer.indexOf("\n")) >= 0) {
+        const linea = buffer.slice(0, indiceSalto).trim();
+        buffer = buffer.slice(indiceSalto + 1);
+        if (!linea) continue;
+        const evento = JSON.parse(linea);
+
+        if (evento.evento === "inicio") {
+          total = evento.total_paginas;
+          mensajeProgreso(`Leyendo nota 0 de ${total}…`);
+        } else if (evento.evento === "pagina") {
+          procesadas++;
+          ultimosResultados.push(evento.resultado);
+          agregarTarjeta(evento.resultado);
+          actualizarContador();
+          barraProgresoRelleno.style.width = `${(procesadas / total) * 100}%`;
+          mensajeProgreso(`Leyendo nota ${procesadas} de ${total}…`);
+          if (evento.resultado.ok) actualizarContadorHistorico();
+        } else if (evento.evento === "fin") {
+          mensajeCarga.textContent = `Listo: ${procesadas} nota(s) leída(s).`;
+          barraProgreso.classList.remove("visible");
+        }
+      }
+    }
+  } catch (error) {
+    mensajeCarga.textContent = `Error: ${error.message}`;
+    barraProgreso.classList.remove("visible");
+  }
+}
+
+function filaItem(pagina, item, indice) {
+  const vacio = !item.articulo;
+  return `
+    <tr data-indice="${indice}">
+      <td><input class="input-item ${vacio ? "vacio-articulo" : ""}" type="text" data-campo="articulo" value="${escHtml(item.articulo || "")}" placeholder="Artículo…"></td>
+      <td><input class="input-item input-cantidad" type="text" data-campo="cantidad" value="${escHtml(item.cantidad || "")}" placeholder="Cant."></td>
+      <td class="celda-pediatrico"><input type="checkbox" data-campo="pediatrico" ${item.pediatrico ? "checked" : ""}></td>
+      <td><button type="button" class="boton-quitar-item" title="Quitar artículo"><i data-lucide="x"></i></button></td>
+    </tr>`;
+}
+
+function tablaItems(pagina, items) {
+  if (!items.length) {
+    return `<div class="sin-items" id="sin-items-${pagina}">Sin artículos leídos — agregalos a mano si hace falta.</div>`;
+  }
+  return `
+    <table class="tabla-items" id="tabla-items-${pagina}">
+      <thead><tr><th>Artículo</th><th>Cantidad</th><th>Pediátrico</th><th></th></tr></thead>
+      <tbody>${items.map((item, indice) => filaItem(pagina, item, indice)).join("")}</tbody>
+    </table>`;
+}
+
+function tarjetaResultado(r) {
+  const idTarjeta = `tarjeta-${r.pagina}`;
+  if (!r.ok) {
+    return `
+      <div class="tarjeta-pedido fila-error" id="${idTarjeta}" data-pagina="${r.pagina}">
+        <div class="cabecera-tarjeta"><span>Pág. ${r.pagina}</span> <i data-lucide="triangle-alert" style="width:13px;height:13px;color:var(--negativa);"></i></div>
+        <div class="texto-error">${escHtml(r.error)}</div>
+      </div>`;
+  }
+  const campos = r.campos;
+  const sede = campos.sede || "";
+  const esRespaldo = (r.motor || "").includes("respaldo");
+  return `
+    <div class="tarjeta-pedido" id="${idTarjeta}" data-pagina="${r.pagina}">
+      <div class="cabecera-tarjeta">
+        <span>Pág. ${r.pagina}</span>
+        <span class="chip-motor ${esRespaldo ? "respaldo" : ""}" title="${esRespaldo ? "El motor principal falló, respondió el respaldo" : ""}">${r.motor || "—"}</span>
+      </div>
+      <div class="fila-sede">
+        <label>Sede:</label>
+        <select class="select-sede ${sede ? "" : "sin-elegir"}" data-campo="sede">
+          <option value="" ${sede === "" ? "selected" : ""}>Sin especificar</option>
+          <option value="Sucursal" ${sede === "Sucursal" ? "selected" : ""}>Sucursal</option>
+          <option value="Principal" ${sede === "Principal" ? "selected" : ""}>Principal</option>
+        </select>
+      </div>
+      <div id="items-contenedor-${r.pagina}">${tablaItems(r.pagina, campos.items || [])}</div>
+      <button type="button" class="boton-agregar-item" data-pagina="${r.pagina}"><i data-lucide="plus"></i> Agregar artículo</button>
+      <div class="archivo-origen" title="${escHtml(r.archivo)}">${escHtml(r.archivo)}</div>
+    </div>`;
+}
+
+function renderItems(pagina) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  const contenedor = document.getElementById(`items-contenedor-${pagina}`);
+  if (!resultado || !contenedor) return;
+  contenedor.innerHTML = tablaItems(pagina, resultado.campos.items || []);
+  refrescarIconos();
+  activarTablaItems(pagina);
+}
+
+function activarTablaItems(pagina) {
+  const tabla = document.getElementById(`tabla-items-${pagina}`);
+  if (!tabla) return;
+  tabla.querySelectorAll("tbody tr").forEach((fila) => {
+    const indice = Number(fila.dataset.indice);
+    fila.querySelectorAll("[data-campo]").forEach((campo) => {
+      const evento = campo.type === "checkbox" ? "change" : "input";
+      campo.addEventListener(evento, () => {
+        const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+        if (!resultado) return;
+        const item = resultado.campos.items[indice];
+        if (!item) return;
+        const nombreCampo = campo.dataset.campo;
+        item[nombreCampo] = campo.type === "checkbox" ? campo.checked : campo.value;
+        if (nombreCampo === "articulo") campo.classList.toggle("vacio-articulo", !campo.value);
+        actualizarContador();
+      });
+    });
+    fila.querySelector(".boton-quitar-item").addEventListener("click", () => {
+      const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+      if (!resultado) return;
+      resultado.campos.items.splice(indice, 1);
+      renderItems(pagina);
+      actualizarContador();
+    });
+  });
+}
+
+function activarTarjeta(pagina) {
+  const tarjeta = listaPedidos.querySelector(`[data-pagina="${pagina}"]`);
+  if (!tarjeta) return;
+  const selectSede = tarjeta.querySelector(".select-sede");
+  if (selectSede) {
+    selectSede.addEventListener("change", () => {
+      const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+      if (!resultado) return;
+      resultado.campos.sede = selectSede.value || null;
+      selectSede.classList.toggle("sin-elegir", !selectSede.value);
+    });
+  }
+  const botonAgregar = tarjeta.querySelector(".boton-agregar-item");
+  if (botonAgregar) {
+    botonAgregar.addEventListener("click", () => {
+      const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+      if (!resultado) return;
+      if (!resultado.campos.items) resultado.campos.items = [];
+      resultado.campos.items.push({ articulo: "", cantidad: "", pediatrico: false });
+      renderItems(pagina);
+      const tabla = document.getElementById(`tabla-items-${pagina}`);
+      const ultimoInput = tabla?.querySelector("tbody tr:last-child input[data-campo='articulo']");
+      if (ultimoInput) ultimoInput.focus();
+    });
+  }
+  activarTablaItems(pagina);
+}
+
+function agregarTarjeta(resultado) {
+  listaPedidos.insertAdjacentHTML("beforeend", tarjetaResultado(resultado));
+  refrescarIconos();
+  if (resultado.ok) activarTarjeta(resultado.pagina);
+}
+
+document.getElementById("boton-exportar").addEventListener("click", async () => {
+  const respuesta = await fetch("/api/pedidos/exportar_excel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resultados: ultimosResultados }),
+  });
+  if (!respuesta.ok) {
+    alert("No se pudo exportar a Excel.");
+    return;
+  }
+  const blob = await respuesta.blob();
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = "pedidos_ocr.xlsx";
+  enlace.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById("boton-nuevo").addEventListener("click", () => {
+  panelResultados.style.display = "none";
+  mensajeCarga.textContent = "";
+  entradaArchivo.value = "";
+  ultimosResultados = [];
+});
+
+refrescarIconos();
+verificarEstadoOCR();
+actualizarContadorHistorico();
+</script>
+</body>
+</html>

@@ -91,11 +91,18 @@ const MODULOS = [
     icono: "pill",
     puerto: 5042,
   },
+  {
+    nombre: "Pedidos OCR",
+    descripcion: "Lee notas de pedido/entrega manuscritas: sede, artículo, cantidad y si es pediátrico.",
+    icono: "clipboard-list",
+    puerto: 5042,
+    ruta: "/pedidos",
+  },
 ];
 
 const grilla = document.getElementById("grilla-modulos");
 grilla.innerHTML = MODULOS.map((m) => `
-  <a class="tarjeta-modulo" href="//${window.location.hostname}:${m.puerto}/">
+  <a class="tarjeta-modulo" href="//${window.location.hostname}:${m.puerto}${m.ruta || "/"}">
     <div class="icono-modulo"><i data-lucide="${m.icono}"></i></div>
     <div class="titulo-modulo">${m.nombre}</div>
     <div class="descripcion-modulo">${m.descripcion}</div>

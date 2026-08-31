@@ -31,6 +31,7 @@ from openpyxl.utils import get_column_letter
 from io import BytesIO
 
 import bd_ocr
+import ocr_pedidos_core as ocr_pedidos
 import ocr_ps_core as ocr
 from bin.consultar_proveedor_profit import buscar_proveedor
 
@@ -50,6 +51,16 @@ ENCABEZADOS_HISTORICO = [
     "Ref. Documento",
 ]
 _lock_historico = threading.Lock()
+
+# Pedidos OCR — mismo puerto que OCR-PS (ver servidor_ocr_ps.py arriba),
+# módulo aparte para leer notas de entrega manuscritas y pasarlas a una
+# tabla limpia (Sede/Articulo/Cantidad/Pediatrico). Una fila del histórico
+# = un ARTÍCULO, no una página (una nota trae varios artículos).
+RUTA_HISTORICO_PEDIDOS = os.path.join(DIRECTORIO_BASE, "data", "pedidos_ocr_historico.xlsx")
+ENCABEZADOS_HISTORICO_PEDIDOS = [
+    "Fecha de registro", "Motor", "Pagina", "Archivo", "Sede", "Articulo", "Cantidad", "Pediatrico",
+]
+_lock_historico_pedidos = threading.Lock()
 
 
 def _abrir_o_crear_historico():
@@ -131,6 +142,61 @@ def procesar_imagen_y_guardar(imagen_bytes, nombre_archivo, numero_pagina, ref_d
 
 
 # ---------------------------------------------------------------------------
+# Pedidos OCR — mismo lock/patrón de histórico que arriba, pero una fila
+# del histórico es un ARTÍCULO (una nota trae varios), no una página.
+# ---------------------------------------------------------------------------
+
+def _abrir_o_crear_historico_pedidos():
+    if os.path.exists(RUTA_HISTORICO_PEDIDOS):
+        libro = load_workbook(RUTA_HISTORICO_PEDIDOS)
+        hoja = libro.active
+        assert hoja is not None
+        return libro, hoja
+
+    os.makedirs(os.path.dirname(RUTA_HISTORICO_PEDIDOS), exist_ok=True)
+    libro = Workbook()
+    hoja = libro.active
+    assert hoja is not None
+    hoja.title = "Histórico Pedidos OCR"
+    hoja.append(ENCABEZADOS_HISTORICO_PEDIDOS)
+    for indice, encabezado in enumerate(ENCABEZADOS_HISTORICO_PEDIDOS, start=1):
+        hoja.column_dimensions[get_column_letter(indice)].width = max(16, len(encabezado) + 2)
+    hoja.freeze_panes = "A2"
+    return libro, hoja
+
+
+def guardar_en_historico_pedidos(motor, pagina, archivo, sede, items):
+    """Agrega UNA fila por artículo al Excel histórico de pedidos — si la
+    nota trae 5 artículos, se agregan 5 filas, todas con la misma
+    sede/página/archivo. Si `items` viene vacío no agrega nada (no tiene
+    sentido una fila de "pedido sin artículos"). Nunca interrumpe el
+    escaneo si falla: el dato sigue disponible igual en la pantalla."""
+    if not items:
+        return
+    with _lock_historico_pedidos:
+        try:
+            libro, hoja = _abrir_o_crear_historico_pedidos()
+            fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for item in items:
+                hoja.append([
+                    fecha, motor, pagina, archivo, sede,
+                    item.get("articulo"), item.get("cantidad"),
+                    "Si" if item.get("pediatrico") else "No",
+                ])
+            libro.save(RUTA_HISTORICO_PEDIDOS)
+        except Exception as error:
+            print(f"[historico pedidos-ocr] No se pudo guardar en {RUTA_HISTORICO_PEDIDOS}: {error}")
+
+
+def procesar_imagen_pedido_y_guardar(imagen_bytes, nombre_archivo, numero_pagina):
+    resultado = ocr_pedidos.procesar_imagen(imagen_bytes, nombre_archivo, numero_pagina)
+    if resultado.get("ok"):
+        campos = resultado["campos"]
+        guardar_en_historico_pedidos(resultado["motor"], numero_pagina, nombre_archivo, campos.get("sede"), campos.get("items"))
+    return resultado
+
+
+# ---------------------------------------------------------------------------
 # Rutas
 # ---------------------------------------------------------------------------
 
@@ -146,12 +212,17 @@ def menu():
 
 @app.route("/api/estado-ocr", methods=["GET"])
 def estado_ocr():
+    cadena_respaldo = []
+    if ocr.clave_google:
+        cadena_respaldo.append(f"{ocr.MODELO_VISION} (Gemini)")
+    if ocr.clave_openrouter:
+        cadena_respaldo.append(f"{ocr.MODELO_VISION_OPENROUTER} (OpenRouter)")
     return jsonify({
         "conectado": True,
         "detalle": {
-            "modelo_vision": ocr.MODELO_VISION,
-            "proveedor": "Google Gemini",
-            "respaldo": ocr.MODELO_VISION_OPENROUTER if ocr.clave_openrouter else None,
+            "modelo_vision": ocr.MODELO_VISION_DEEPSEEK,
+            "proveedor": "DeepSeek",
+            "respaldo": " → ".join(cadena_respaldo) if cadena_respaldo else None,
         },
     })
 
@@ -439,7 +510,173 @@ def reiniciar_historico():
     return jsonify({"ok": True, "filas_eliminadas": filas_eliminadas, "respaldo": os.path.basename(ruta_respaldo)})
 
 
+# ---------------------------------------------------------------------------
+# Pedidos OCR — notas de entrega/pedido manuscritas, mismo puerto que
+# OCR-PS. La inteligencia vive en ocr_pedidos_core.py; acá solo la
+# interfaz web propia (página, streaming del escaneo, exportar a Excel,
+# histórico acumulado en /data/pedidos_ocr_historico.xlsx).
+# ---------------------------------------------------------------------------
+
+@app.route("/pedidos")
+def pedidos_index():
+    return render_template("ocr_pedidos.html")
+
+
+@app.route("/api/pedidos/estado-ocr", methods=["GET"])
+def pedidos_estado_ocr():
+    cadena_respaldo = []
+    if ocr_pedidos.clave_google:
+        cadena_respaldo.append(f"{ocr_pedidos.MODELO_VISION} (Gemini)")
+    if ocr_pedidos.clave_openrouter:
+        cadena_respaldo.append(f"{ocr_pedidos.MODELO_VISION_OPENROUTER} (OpenRouter)")
+    return jsonify({
+        "conectado": True,
+        "detalle": {
+            "modelo_vision": ocr_pedidos.MODELO_VISION_DEEPSEEK,
+            "proveedor": "DeepSeek",
+            "respaldo": " → ".join(cadena_respaldo) if cadena_respaldo else None,
+        },
+    })
+
+
+@app.route("/api/pedidos/escanear", methods=["POST"])
+def pedidos_escanear():
+    archivo = request.files.get("archivo")
+    if archivo is None or not archivo.filename:
+        return jsonify({"error": "Sube un archivo (campo 'archivo')"}), 400
+
+    extension = archivo.filename.rsplit(".", 1)[-1].lower()
+    if extension not in ocr_pedidos.EXTENSIONES_PERMITIDAS:
+        return jsonify({"error": f"Extensión no soportada: .{extension}"}), 400
+
+    contenido = archivo.read()
+    nombre_archivo = archivo.filename
+
+    if extension == "pdf":
+        try:
+            imagenes = ocr_pedidos.pdf_a_imagenes(contenido)
+        except Exception as error:
+            return jsonify({"error": f"No se pudo leer el PDF: {error}"}), 400
+        if not imagenes:
+            return jsonify({"error": "El PDF no tiene páginas"}), 400
+    else:
+        imagenes = [contenido]
+
+    def generar():
+        try:
+            total = len(imagenes)
+            yield json.dumps({"evento": "inicio", "total_paginas": total}) + "\n"
+            for indice, imagen_bytes in enumerate(imagenes, start=1):
+                if indice > 1:
+                    time.sleep(4)
+                nombre = f"{nombre_archivo}-pagina{indice}.png" if extension == "pdf" else nombre_archivo
+                resultado = procesar_imagen_pedido_y_guardar(imagen_bytes, nombre, indice)
+                yield json.dumps({"evento": "pagina", "resultado": resultado}) + "\n"
+            yield json.dumps({"evento": "fin"}) + "\n"
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError, GeneratorExit):
+            return
+
+    return Response(generar(), mimetype="application/x-ndjson")
+
+
+@app.route("/api/pedidos/exportar_excel", methods=["POST"])
+def pedidos_exportar_excel():
+    """Arma la tabla limpia final: UNA FILA POR ARTÍCULO (no por página),
+    con la sede repetida en cada fila de su nota — es el pedido a la
+    factura, "tabla limpia en excel" que pidió el usuario, con exactamente
+    los 4 campos: Sede, Articulo, Cantidad, Pediatrico."""
+    payload = request.get_json(silent=True) or {}
+    resultados = payload.get("resultados", [])
+
+    libro = Workbook()
+    hoja = libro.active
+    assert hoja is not None
+    hoja.title = "Pedidos OCR"
+
+    encabezados = ["Sede", "Articulo", "Cantidad", "Pediatrico"]
+    hoja.append(encabezados)
+
+    for fila in resultados:
+        campos = fila.get("campos") or {}
+        sede = campos.get("sede")
+        for item in campos.get("items") or []:
+            hoja.append([
+                sede,
+                item.get("articulo"),
+                item.get("cantidad"),
+                "Si" if item.get("pediatrico") else "No",
+            ])
+
+    anchos = [14, 46, 14, 12]
+    for indice, ancho in enumerate(anchos, start=1):
+        hoja.column_dimensions[get_column_letter(indice)].width = ancho
+
+    buffer = BytesIO()
+    libro.save(buffer)
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="pedidos_ocr.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/api/pedidos/historico/estado", methods=["GET"])
+def pedidos_estado_historico():
+    if not os.path.exists(RUTA_HISTORICO_PEDIDOS):
+        return jsonify({"existe": False, "filas": 0})
+    with _lock_historico_pedidos:
+        libro = load_workbook(RUTA_HISTORICO_PEDIDOS, read_only=True)
+        hoja = libro.active
+        assert hoja is not None
+        filas = max(0, hoja.max_row - 1)
+        libro.close()
+    return jsonify({"existe": True, "filas": filas})
+
+
+@app.route("/api/pedidos/historico/descargar", methods=["GET"])
+def pedidos_descargar_historico():
+    if not os.path.exists(RUTA_HISTORICO_PEDIDOS):
+        return jsonify({"error": "Todavía no hay extracciones guardadas en el histórico"}), 404
+    with _lock_historico_pedidos:
+        return send_file(
+            RUTA_HISTORICO_PEDIDOS,
+            as_attachment=True,
+            download_name="pedidos_ocr_historico.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+
+@app.route("/api/pedidos/historico/reiniciar", methods=["POST"])
+def pedidos_reiniciar_historico():
+    """Mismo criterio que /api/historico/reiniciar de OCR-PS: no borra a
+    lo loco, renombra el archivo actual con fecha/hora como respaldo."""
+    if not os.path.exists(RUTA_HISTORICO_PEDIDOS):
+        return jsonify({"ok": True, "filas_eliminadas": 0})
+
+    with _lock_historico_pedidos:
+        filas_eliminadas = 0
+        try:
+            libro_actual = load_workbook(RUTA_HISTORICO_PEDIDOS, read_only=True)
+            hoja_actual = libro_actual.active
+            filas_eliminadas = max(0, hoja_actual.max_row - 1)
+            libro_actual.close()
+        except Exception:
+            pass
+
+        marca = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ruta_respaldo = os.path.join(DIRECTORIO_BASE, "data", f"pedidos_ocr_historico_respaldo_{marca}.xlsx")
+        try:
+            os.replace(RUTA_HISTORICO_PEDIDOS, ruta_respaldo)
+        except OSError as error:
+            return jsonify({"error": f"No se pudo reiniciar el histórico: {error}"}), 500
+
+    return jsonify({"ok": True, "filas_eliminadas": filas_eliminadas, "respaldo": os.path.basename(ruta_respaldo)})
+
+
 if __name__ == "__main__":
     puerto = int(os.environ.get("PUERTO_OCR_PS", 5042))
-    print(f"OCR-PS (números de factura para psicotrópicos) — puerto {puerto}, modelo: {ocr.MODELO_VISION}")
+    print(f"OCR-PS (números de factura para psicotrópicos) — puerto {puerto}, modelo principal: {ocr.MODELO_VISION_DEEPSEEK} (DeepSeek), respaldo: {ocr.MODELO_VISION} (Gemini)")
     app.run(host="0.0.0.0", port=puerto, debug=True, threaded=True, use_reloader=False)

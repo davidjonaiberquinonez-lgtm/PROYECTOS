@@ -142,12 +142,17 @@ def menu():
 
 @app.route("/api/estado-ocr", methods=["GET"])
 def estado_ocr():
+    cadena_respaldo = []
+    if ocr.clave_google:
+        cadena_respaldo.append(f"{ocr.MODELO_VISION} (Gemini)")
+    if ocr.clave_openrouter:
+        cadena_respaldo.append(f"{ocr.MODELO_VISION_OPENROUTER} (OpenRouter)")
     return jsonify({
         "conectado": True,
         "detalle": {
-            "modelo_vision": ocr.MODELO_VISION,
-            "proveedor": "Google Gemini",
-            "respaldo": ocr.MODELO_VISION_OPENROUTER if ocr.clave_openrouter else None,
+            "modelo_vision": ocr.MODELO_VISION_DEEPSEEK,
+            "proveedor": "DeepSeek",
+            "respaldo": " → ".join(cadena_respaldo) if cadena_respaldo else None,
         },
     })
 
@@ -377,5 +382,5 @@ def reiniciar_historico():
 
 if __name__ == "__main__":
     puerto = int(os.environ.get("PUERTO_ABONOS", 5040))
-    print(f"Escáner de recibos de cobro (abonos) — usando modelo de visión Google: {ocr.MODELO_VISION}")
+    print(f"Escáner de recibos de cobro (abonos) — modelo principal: {ocr.MODELO_VISION_DEEPSEEK} (DeepSeek), respaldo: {ocr.MODELO_VISION} (Gemini)")
     app.run(host="0.0.0.0", port=puerto, debug=True, threaded=True, use_reloader=False)

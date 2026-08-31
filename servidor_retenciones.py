@@ -63,6 +63,21 @@ ENCABEZADOS_HISTORICO = [
 ]
 _lock_historico = threading.Lock()
 
+# Histórico del DETALLE (una fila por factura de la tabla "Compras Internas
+# e Importaciones" de cada comprobante) — archivo aparte, no columnas
+# nuevas en ENCABEZADOS_HISTORICO de arriba: ese esquema tiene posiciones
+# fijas que /api/historico/cargar_al_servidor desempaqueta por índice
+# (ver más abajo) y bd_ocr.guardar_retencion espera esos 6 campos exactos
+# — agregar columnas ahí correría todo y rompería esa carga a MySQL.
+RUTA_HISTORICO_DETALLE = os.path.join(DIRECTORIO_BASE, "data", "retenciones_detalle_historico.xlsx")
+ENCABEZADOS_HISTORICO_DETALLE = [
+    "Fecha de registro", "Archivo", "Motor", "Nro Comprobante",
+    "Numero Factura", "Numero Control", "Numero Nota Debito", "Numero Nota Credito",
+    "Tipo Trans", "Documento Afectado", "Total Compras Con Iva", "Total Compras Sin Iva",
+    "Base Imponible", "% Alicuota", "Impuesto IVA", "IVA Retenido",
+]
+_lock_historico_detalle = threading.Lock()
+
 
 def _abrir_o_crear_historico():
     if os.path.exists(RUTA_HISTORICO):
@@ -112,13 +127,59 @@ def guardar_en_historico_global(nombre_archivo, motor, campos):
     # borrador; el servidor solo recibe lo ya revisado.
 
 
+def _abrir_o_crear_historico_detalle():
+    if os.path.exists(RUTA_HISTORICO_DETALLE):
+        libro = load_workbook(RUTA_HISTORICO_DETALLE)
+        hoja = libro.active
+        assert hoja is not None
+        return libro, hoja
+
+    os.makedirs(os.path.dirname(RUTA_HISTORICO_DETALLE), exist_ok=True)
+    libro = Workbook()
+    hoja = libro.active
+    assert hoja is not None
+    hoja.title = "Detalle facturas"
+    hoja.append(ENCABEZADOS_HISTORICO_DETALLE)
+    for indice, encabezado in enumerate(ENCABEZADOS_HISTORICO_DETALLE, start=1):
+        hoja.column_dimensions[get_column_letter(indice)].width = max(14, len(encabezado) + 2)
+    hoja.freeze_panes = "A2"
+    return libro, hoja
+
+
+def guardar_detalle_en_historico(nombre_archivo, motor, nro_comprobante, filas_detalle):
+    """Una fila por factura de "Compras Internas e Importaciones" — si el
+    comprobante trae 3 facturas, se agregan 3 filas acá (todas con el
+    mismo Nro Comprobante). No interrumpe el escaneo si falla."""
+    if not filas_detalle:
+        return
+    with _lock_historico_detalle:
+        try:
+            libro, hoja = _abrir_o_crear_historico_detalle()
+            fecha_registro = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for fila in filas_detalle:
+                hoja.append([
+                    fecha_registro, nombre_archivo, motor, nro_comprobante,
+                    fila.get("numero_factura"), fila.get("numero_control"),
+                    fila.get("numero_nota_debito"), fila.get("numero_nota_credito"),
+                    fila.get("tipo_trans"), fila.get("documento_afectado"),
+                    fila.get("total_compras_con_iva"), fila.get("total_compras_sin_iva"),
+                    fila.get("base_imponible"), fila.get("porcentaje_alicuota"),
+                    fila.get("impuesto_iva"), fila.get("iva_retenido"),
+                ])
+            libro.save(RUTA_HISTORICO_DETALLE)
+        except Exception as error:
+            print(f"[historico detalle OCR] No se pudo guardar en {RUTA_HISTORICO_DETALLE}: {error}")
+
+
 def procesar_imagen_y_guardar(imagen_bytes, nombre_archivo, numero_pagina):
     """Envoltorio sobre ocr.procesar_imagen que además registra el
     resultado exitoso en el histórico local — eso es específico de esta
     interfaz, no de la inteligencia en sí (la API pública no lo hace)."""
     resultado = ocr.procesar_imagen(imagen_bytes, nombre_archivo, numero_pagina)
     if resultado.get("ok"):
-        guardar_en_historico_global(nombre_archivo, resultado["motor"], resultado["campos"])
+        campos = resultado["campos"]
+        guardar_en_historico_global(nombre_archivo, resultado["motor"], campos)
+        guardar_detalle_en_historico(nombre_archivo, resultado["motor"], campos.get("nro_comprobante"), campos.get("detalle"))
     return resultado
 
 
@@ -138,12 +199,17 @@ def menu():
 
 @app.route("/api/estado-ocr", methods=["GET"])
 def estado_ocr():
+    cadena_respaldo = []
+    if ocr.clave_google:
+        cadena_respaldo.append(f"{ocr.MODELO_VISION} (Gemini)")
+    if ocr.clave_openrouter:
+        cadena_respaldo.append(f"{ocr.MODELO_VISION_OPENROUTER} (OpenRouter)")
     return jsonify({
         "conectado": True,
         "detalle": {
-            "modelo_vision": ocr.MODELO_VISION,
-            "proveedor": "Google Gemini",
-            "respaldo": ocr.MODELO_VISION_OPENROUTER if ocr.clave_openrouter else None,
+            "modelo_vision": ocr.MODELO_VISION_DEEPSEEK,
+            "proveedor": "DeepSeek",
+            "respaldo": " → ".join(cadena_respaldo) if cadena_respaldo else None,
         },
     })
 
@@ -242,6 +308,32 @@ def exportar_excel():
 
     for indice, encabezado in enumerate(encabezados, start=1):
         hoja.column_dimensions[get_column_letter(indice)].width = max(14, len(encabezado) + 2)
+
+    # Segunda hoja: el detalle fila-por-factura de "Compras Internas e
+    # Importaciones" de cada comprobante — antes se perdía, solo quedaba
+    # el resumen de arriba (reportado en vivo, 31/08).
+    hoja_detalle = libro.create_sheet("Detalle facturas")
+    encabezados_detalle = [
+        "Página", "Nro Comprobante", "Numero Factura", "Numero Control",
+        "Numero Nota Debito", "Numero Nota Credito", "Tipo Trans", "Documento Afectado",
+        "Total Compras Con Iva", "Total Compras Sin Iva", "Base Imponible",
+        "% Alicuota", "Impuesto IVA", "IVA Retenido",
+    ]
+    hoja_detalle.append(encabezados_detalle)
+    for fila in resultados:
+        campos = fila.get("campos", {})
+        for detalle in campos.get("detalle") or []:
+            hoja_detalle.append([
+                fila.get("pagina"), campos.get("nro_comprobante"),
+                detalle.get("numero_factura"), detalle.get("numero_control"),
+                detalle.get("numero_nota_debito"), detalle.get("numero_nota_credito"),
+                detalle.get("tipo_trans"), detalle.get("documento_afectado"),
+                detalle.get("total_compras_con_iva"), detalle.get("total_compras_sin_iva"),
+                detalle.get("base_imponible"), detalle.get("porcentaje_alicuota"),
+                detalle.get("impuesto_iva"), detalle.get("iva_retenido"),
+            ])
+    for indice, encabezado in enumerate(encabezados_detalle, start=1):
+        hoja_detalle.column_dimensions[get_column_letter(indice)].width = max(14, len(encabezado) + 2)
 
     buffer = BytesIO()
     libro.save(buffer)
@@ -350,7 +442,58 @@ def reiniciar_historico():
     return jsonify({"ok": True, "filas_eliminadas": filas_eliminadas, "respaldo": os.path.basename(ruta_respaldo)})
 
 
+@app.route("/api/historico_detalle/estado", methods=["GET"])
+def estado_historico_detalle():
+    if not os.path.exists(RUTA_HISTORICO_DETALLE):
+        return jsonify({"existe": False, "filas": 0})
+    with _lock_historico_detalle:
+        libro = load_workbook(RUTA_HISTORICO_DETALLE, read_only=True)
+        hoja = libro.active
+        assert hoja is not None
+        filas = max(0, hoja.max_row - 1)
+        libro.close()
+    return jsonify({"existe": True, "filas": filas})
+
+
+@app.route("/api/historico_detalle/descargar", methods=["GET"])
+def descargar_historico_detalle():
+    if not os.path.exists(RUTA_HISTORICO_DETALLE):
+        return jsonify({"error": "Todavía no hay detalle de facturas guardado en el histórico"}), 404
+    with _lock_historico_detalle:
+        return send_file(
+            RUTA_HISTORICO_DETALLE,
+            as_attachment=True,
+            download_name="retenciones_detalle_historico.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+
+@app.route("/api/historico_detalle/reiniciar", methods=["POST"])
+def reiniciar_historico_detalle():
+    if not os.path.exists(RUTA_HISTORICO_DETALLE):
+        return jsonify({"ok": True, "filas_eliminadas": 0})
+
+    with _lock_historico_detalle:
+        filas_eliminadas = 0
+        try:
+            libro_actual = load_workbook(RUTA_HISTORICO_DETALLE, read_only=True)
+            hoja_actual = libro_actual.active
+            filas_eliminadas = max(0, hoja_actual.max_row - 1)
+            libro_actual.close()
+        except Exception:
+            pass
+
+        marca = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ruta_respaldo = os.path.join(DIRECTORIO_BASE, "data", f"retenciones_detalle_historico_respaldo_{marca}.xlsx")
+        try:
+            os.replace(RUTA_HISTORICO_DETALLE, ruta_respaldo)
+        except OSError as error:
+            return jsonify({"error": f"No se pudo reiniciar el histórico de detalle: {error}"}), 500
+
+    return jsonify({"ok": True, "filas_eliminadas": filas_eliminadas, "respaldo": os.path.basename(ruta_respaldo)})
+
+
 if __name__ == "__main__":
     puerto = int(os.environ.get("PUERTO_RETENCIONES", 5030))
-    print(f"Escáner de retenciones IVA — usando modelo de visión Google: {ocr.MODELO_VISION}")
+    print(f"Escáner de retenciones IVA — modelo principal: {ocr.MODELO_VISION_DEEPSEEK} (DeepSeek), respaldo: {ocr.MODELO_VISION} (Gemini)")
     app.run(host="0.0.0.0", port=puerto, debug=True, threaded=True, use_reloader=False)

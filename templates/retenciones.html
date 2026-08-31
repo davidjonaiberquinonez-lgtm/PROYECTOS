@@ -180,6 +180,7 @@
     color: var(--acento-oscuro);
     cursor: pointer;
     text-decoration: underline;
+    display: block;
   }
   .texto-crudo {
     display: none;
@@ -250,6 +251,7 @@
       <button id="boton-exportar"><i data-lucide="file-spreadsheet"></i> Exportar a Excel</button>
       <button class="secundario" id="boton-nuevo"><i data-lucide="rotate-ccw"></i> Escanear otro documento</button>
     </div>
+    <div style="overflow-x:auto;">
     <table>
       <thead>
         <tr>
@@ -258,14 +260,25 @@
           <th>Fecha</th>
           <th>Nro Comprobante</th>
           <th>Cliente</th>
-          <th>Nro Factura</th>
           <th>RIF Cliente</th>
-          <th>Monto Retenido</th>
+          <th>Nº Factura</th>
+          <th>Nº Control</th>
+          <th>Nota Débito</th>
+          <th>Nota Crédito</th>
+          <th>Tipo Trans</th>
+          <th>Doc. Afectado</th>
+          <th>Total C/IVA</th>
+          <th>Total S/IVA</th>
+          <th>Base Imponible</th>
+          <th>% Alíc</th>
+          <th>Impuesto IVA</th>
+          <th>IVA Retenido</th>
           <th></th>
         </tr>
       </thead>
       <tbody id="cuerpo-tabla"></tbody>
     </table>
+    </div>
   </div>
 </main>
 
@@ -434,27 +447,62 @@ async function escanearArchivo(archivo) {
   }
 }
 
-function filaResultado(r) {
-  if (!r.ok) {
-    return `<tr class="fila-error" data-pagina="${r.pagina}"><td>${r.pagina}</td><td colspan="8">⚠️ ${r.error}</td></tr>`;
-  }
+function escHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = String(s ?? "");
+  return d.innerHTML;
+}
+
+// La fila de la tabla YA ES el resultado completo — antes acá solo se
+// veían los 6 campos viejos y el detalle quedaba escondido detrás de "ver
+// detalle"; ahora cada fila visible es una factura de la tabla de compras,
+// con TODOS los campos que trae el JSON (pedido del usuario, 31/08: "la
+// previsualización de arriba debe ser lo mismo que lo de abajo").
+const COLUMNAS_DETALLE = [
+  ["numero_factura", "Nº Factura"], ["numero_control", "Nº Control"],
+  ["numero_nota_debito", "Nota Débito"], ["numero_nota_credito", "Nota Crédito"],
+  ["tipo_trans", "Tipo Trans"], ["documento_afectado", "Doc. Afectado"],
+  ["total_compras_con_iva", "Total C/IVA"], ["total_compras_sin_iva", "Total S/IVA"],
+  ["base_imponible", "Base Imponible"], ["porcentaje_alicuota", "% Alíc"],
+  ["impuesto_iva", "Impuesto IVA"], ["iva_retenido", "IVA Retenido"],
+];
+const TOTAL_COLUMNAS = 6 + COLUMNAS_DETALLE.length + 1; // pág+motor+fecha+comprobante+cliente+rif + 12 detalle + acciones
+
+function filaDetalle(r, indice, esUltima) {
   const c = r.campos;
+  const fila = indice === null ? {} : (c.detalle[indice] || {});
   const idTexto = `crudo-${r.pagina}`;
   const esRespaldo = (r.motor || "").includes("respaldo");
+  const celdaDetalle = (campo) => indice === null
+    ? `<td>—</td>`
+    : `<td><input type="text" data-detalle="${indice}" data-campo="${campo}" value="${escHtml(fila[campo] ?? "")}" placeholder="—"></td>`;
   return `
-    <tr data-pagina="${r.pagina}">
+    <tr data-pagina="${r.pagina}" ${indice !== null ? `data-indice="${indice}"` : ""}>
       <td>${r.pagina}</td>
-      <td><span class="chip-motor ${esRespaldo ? "respaldo" : ""}" title="${esRespaldo ? "Gemini estaba saturado, respondió el respaldo" : ""}">${r.motor || "—"}</span></td>
-      <td><input type="text" data-campo="fecha" value="${c.fecha || ""}" placeholder="—"></td>
-      <td><input type="text" data-campo="nro_comprobante" value="${c.nro_comprobante || ""}" placeholder="—"></td>
-      <td><input type="text" data-campo="cliente" value="${c.cliente || ""}" placeholder="—"></td>
-      <td><input type="text" data-campo="nro_factura" value="${c.nro_factura || ""}" placeholder="—"></td>
-      <td><input type="text" data-campo="rif_cliente" value="${c.rif_cliente || ""}" placeholder="—"></td>
-      <td><input type="text" data-campo="monto_retenido" value="${c.monto_retenido || ""}" placeholder="—"></td>
-      <td><span class="detalle-toggle" data-toggle="${idTexto}">ver texto OCR</span></td>
+      <td><span class="chip-motor ${esRespaldo ? "respaldo" : ""}" title="${esRespaldo ? "El motor principal estaba saturado, respondió el respaldo" : ""}">${r.motor || "—"}</span></td>
+      <td><input type="text" data-campo="fecha" value="${escHtml(c.fecha ?? "")}" placeholder="—"></td>
+      <td><input type="text" data-campo="nro_comprobante" value="${escHtml(c.nro_comprobante ?? "")}" placeholder="—"></td>
+      <td><input type="text" data-campo="cliente" value="${escHtml(c.cliente ?? "")}" placeholder="—"></td>
+      <td><input type="text" data-campo="rif_cliente" value="${escHtml(c.rif_cliente ?? "")}" placeholder="—"></td>
+      ${COLUMNAS_DETALLE.map(([campo]) => celdaDetalle(campo)).join("")}
+      <td>${esUltima ? `<span class="detalle-toggle" data-toggle="${idTexto}">ver texto OCR</span>` : ""}</td>
     </tr>
+  `;
+}
+
+function filaResultado(r) {
+  if (!r.ok) {
+    return `<tr class="fila-error" data-pagina="${r.pagina}"><td>${r.pagina}</td><td colspan="${TOTAL_COLUMNAS - 1}">⚠️ ${escHtml(r.error)}</td></tr>`;
+  }
+  const detalle = r.campos.detalle || [];
+  const filas = detalle.length
+    ? detalle.map((_, indice) => filaDetalle(r, indice, indice === detalle.length - 1)).join("")
+    : filaDetalle(r, null, true);
+  const idTexto = `crudo-${r.pagina}`;
+  return `
+    ${filas}
     <tr>
-      <td colspan="9" style="border-bottom:1px solid var(--borde); padding:0 10px;">
+      <td colspan="${TOTAL_COLUMNAS}" style="border-bottom:1px solid var(--borde); padding:0 10px 8px;">
         <div class="texto-crudo" id="${idTexto}">${(r.texto_ocr || "(sin texto)").replace(/</g, "&lt;")}</div>
       </td>
     </tr>
@@ -462,23 +510,33 @@ function filaResultado(r) {
 }
 
 function activarFila(pagina) {
-  const fila = cuerpoTabla.querySelector(`tr[data-pagina="${pagina}"]`);
-  if (!fila) return;
-  fila.classList.add("fila-nueva");
+  const filas = cuerpoTabla.querySelectorAll(`tr[data-pagina="${pagina}"]`);
+  filas.forEach((fila) => {
+    fila.classList.add("fila-nueva");
 
-  const toggle = fila.querySelector("[data-toggle]");
-  if (toggle) {
-    toggle.addEventListener("click", () => {
-      document.getElementById(toggle.dataset.toggle).classList.toggle("visible");
+    fila.querySelectorAll("[data-toggle]").forEach((toggle) => {
+      toggle.addEventListener("click", () => {
+        document.getElementById(toggle.dataset.toggle).classList.toggle("visible");
+      });
     });
-  }
 
-  // Los campos son editables — cualquier corrección manual se refleja en
-  // ultimosResultados antes de exportar a Excel.
-  fila.querySelectorAll("input[data-campo]").forEach((input) => {
-    input.addEventListener("input", () => {
-      const resultado = ultimosResultados.find((r) => r.pagina === pagina);
-      if (resultado) resultado.campos[input.dataset.campo] = input.value;
+    // Los campos son editables — cualquier corrección manual se refleja en
+    // ultimosResultados antes de exportar a Excel. Los de la cabecera de la
+    // página (fecha/comprobante/cliente/rif) están en campos.*; los de cada
+    // factura están en campos.detalle[indice].*.
+    fila.querySelectorAll("input[data-campo]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+        if (!resultado) return;
+        if (input.dataset.detalle !== undefined) {
+          const indice = Number(input.dataset.detalle);
+          if (resultado.campos.detalle && resultado.campos.detalle[indice]) {
+            resultado.campos.detalle[indice][input.dataset.campo] = input.value;
+          }
+        } else {
+          resultado.campos[input.dataset.campo] = input.value;
+        }
+      });
     });
   });
 }

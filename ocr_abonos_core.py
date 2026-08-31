@@ -27,10 +27,13 @@ Campos que extrae, por cada página/imagen:
   - forma_pago            Qué casillas están marcadas en "FORMA DE PAGO"
                           (COP / DOLARES / BS), separadas por coma
 
-Motor principal: Google Gemini (gemini-3.6-flash). Motor de respaldo:
-OpenRouter (dots-studio/dots-3-note-preview, gratis) — automático si
-Gemini agota reintentos por 429/503. El campo "motor" del resultado
-indica cuál de los dos respondió.
+Motor principal: DeepSeek (deepseek-v4-flash-vision-exp) — modelo de
+visión experimental de DeepSeek, comprime cada imagen a ~800x800px/384
+tokens antes de leerla, así que en letra manuscrita chica puede rendir
+peor que Gemini. Si falla, respaldo automático a Gemini
+(gemini-3.6-flash), y si ese también falla, a OpenRouter
+(dots-studio/dots-3-note-preview, gratis). El campo "motor" del resultado
+indica cuál de los tres respondió.
 """
 
 import base64
@@ -59,6 +62,10 @@ if not clave_google:
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODELO_VISION_OPENROUTER = os.environ.get("MODELO_VISION_OPENROUTER", "dots-studio/dots-3-note-preview:free")
 clave_openrouter = os.environ.get("OPENROUTER_API_KEY")
+
+DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
+MODELO_VISION_DEEPSEEK = os.environ.get("MODELO_VISION_DEEPSEEK", "deepseek-v4-flash-vision-exp")
+clave_deepseek = os.environ.get("DEEPSEEK_API_KEY")
 
 EXTENSIONES_IMAGEN = {"png", "jpg", "jpeg", "webp", "bmp"}
 EXTENSIONES_PERMITIDAS = EXTENSIONES_IMAGEN | {"pdf"}
@@ -288,20 +295,85 @@ def consultar_vision_openrouter(imagen_bytes):
     return campos, texto
 
 
-def consultar_vision(imagen_bytes):
-    """Gemini primero (más preciso); si se satura (429/503) o falla por
-    cualquier otra razón, se reintenta automáticamente con OpenRouter en
-    vez de devolver un error. `motor` en el resultado indica cuál de los
-    dos respondió."""
-    try:
-        campos, texto = consultar_vision_google(imagen_bytes)
-        return campos, texto, "Gemini"
-    except ErrorOCR as error_gemini:
+def consultar_vision_deepseek(imagen_bytes):
+    if not clave_deepseek:
+        raise ErrorOCR("No hay DEEPSEEK_API_KEY configurada")
+
+    b64 = base64.b64encode(imagen_bytes).decode()
+    payload = {
+        "model": MODELO_VISION_DEEPSEEK,
+        "temperature": 0.0,
+        "max_tokens": 8192,  # deepseek-v4-flash-vision-exp razona antes de responder
+        # (campo "reasoning_content" aparte de "content", confirmado en vivo el 31/08:
+        # ~600 tokens de razonamiento incluso con una imagen en blanco) — con 2048 el
+        # modelo podía gastar todo el tope pensando y nunca llegar a escribir el JSON:
+        # consumía tokens de entrada/salida igual, pero "content" quedaba vacío.
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": PROMPT_SISTEMA},
+            {"role": "user", "content": [
+                {"type": "text", "text": "Extrae los 10 campos y los 2 puntajes de confianza de esta imagen siguiendo exactamente las reglas. Responde solo con el JSON, nada más."},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+            ]},
+        ],
+    }
+    texto = None
+    ultimo_error = None
+    # Mismo criterio de reintento que consultar_vision_google: 429/503
+    # valen la pena reintentar con espera — sin esto un límite de
+    # peticiones de DeepSeek se reportaba como "falló" directo (reportado
+    # en vivo, 31/08).
+    for intento in range(2):
         try:
-            campos, texto = consultar_vision_openrouter(imagen_bytes)
-            return campos, texto, "OpenRouter (respaldo)"
-        except ErrorOCR as error_openrouter:
-            raise ErrorOCR(f"{error_gemini} — {error_openrouter}") from error_openrouter
+            respuesta = requests.post(
+                DEEPSEEK_URL, json=payload,
+                headers={"Authorization": f"Bearer {clave_deepseek}"}, timeout=60,
+            )
+            respuesta.raise_for_status()
+            cuerpo = respuesta.json()
+            texto = cuerpo["choices"][0]["message"]["content"]
+            ultimo_error = None
+            break
+        except Exception as error:
+            ultimo_error = error
+            codigo = error.response.status_code if isinstance(error, requests.HTTPError) and error.response is not None else None
+            if codigo in (429, 503):
+                time.sleep(5 * (intento + 1))
+                continue
+            break
+    if ultimo_error is not None:
+        raise ErrorOCR(f"DeepSeek falló: {ultimo_error}") from ultimo_error
+
+    if not texto:
+        raise ErrorOCR("DeepSeek no devolvió contenido (se quedó sin tokens razonando)")
+
+    datos = _extraer_json(texto)
+    campos = _mapear_campos(datos)
+    return campos, texto
+
+
+def consultar_vision(imagen_bytes):
+    """DeepSeek primero (más barato); si falla o no está configurado, se
+    reintenta con Gemini, y si ese también falla, con OpenRouter. `motor`
+    en el resultado indica cuál de los tres respondió.
+
+    TEMPORAL: DeepSeek recién estrenó visión (deepseek-v4-flash-vision-exp,
+    21/08/2026) y comprime cada imagen a ~800x800px/384 tokens antes de
+    leerla — en letra manuscrita chica puede rendir peor que Gemini. Si la
+    precisión no convence, volver a poner a Gemini primero."""
+    try:
+        campos, texto = consultar_vision_deepseek(imagen_bytes)
+        return campos, texto, "DeepSeek"
+    except ErrorOCR as error_deepseek:
+        try:
+            campos, texto = consultar_vision_google(imagen_bytes)
+            return campos, texto, "Gemini (respaldo)"
+        except ErrorOCR as error_gemini:
+            try:
+                campos, texto = consultar_vision_openrouter(imagen_bytes)
+                return campos, texto, "OpenRouter (respaldo)"
+            except ErrorOCR as error_openrouter:
+                raise ErrorOCR(f"{error_deepseek} — {error_gemini} — {error_openrouter}") from error_openrouter
 
 
 def calcular_confianza(campos):

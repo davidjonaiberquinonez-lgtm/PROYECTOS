@@ -10,7 +10,15 @@ Qué hay en esta carpeta
 - api_retenciones_ocr.py  (puerto 5031) — API pública sin interfaz, para otros
   sistemas (ej. el conector de tu compañero). Cubre los tres tipos de documento.
 - ocr_retenciones_core.py / ocr_abonos_core.py / ocr_ps_core.py — la inteligencia
-  de extracción de cada módulo (Gemini + respaldo OpenRouter).
+  de extracción de cada módulo. Motor principal: DeepSeek
+  (deepseek-v4-flash-vision-exp) — modelo de visión experimental, más
+  barato, pero comprime cada imagen a ~800x800px/384 tokens antes de
+  leerla, así que en documentos con letra chica puede rendir algo peor
+  que Gemini. Si falla, respaldo automático a Gemini (gemini-3.6-flash), y
+  si ese también falla, a OpenRouter (dots-studio/dots-3-note-preview,
+  gratis). El campo "motor" de cada resultado dice cuál de los tres
+  respondió — conviene vigilarlo un tiempo para confiar en la precisión de
+  DeepSeek antes de dar esto por definitivo.
 - bd_ocr.py — YA NO usa SQLite: se conecta al MySQL de XAMPP que corre en
   192.168.4.23 (esa misma máquina destino), a una base llamada "ocr_scanner"
   que bd_ocr.py crea sola la primera vez que corre. Tiene 3 tablas de datos
@@ -43,7 +51,7 @@ Qué hay en esta carpeta
   pymysql (para el MySQL de XAMPP) — ya instaladas y probadas en un venv
   local dentro de esta misma carpeta, ver "venv/".
 - .env — claves, puertos y credenciales de Profit y de MySQL/XAMPP. YA tiene
-  las claves reales de Gemini/OpenRouter, los puertos por defecto
+  las claves reales de DeepSeek/Gemini/OpenRouter, los puertos por defecto
   (5030 / 5031 / 5041 / 5042), PROFIT_SQL_HOST/PORT/NAME/USER/PASS, y
   XAMPP_MYSQL_HOST/PORT/USER/PASSWORD/DB. Trátalo como secreto.
 
