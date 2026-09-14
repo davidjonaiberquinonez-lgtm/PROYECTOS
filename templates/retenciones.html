@@ -92,14 +92,14 @@
   #punto-ocr { width: 8px; height: 8px; border-radius: 50%; background: #ffb3b0; }
   #punto-ocr.ok { background: #b6f0a1; }
 
-  main { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+  main { max-width: 1700px; margin: 0 auto; padding: 20px 28px 60px; }
 
   .panel {
     background: var(--panel);
     border: 1px solid var(--borde);
-    border-radius: 10px;
-    padding: 18px;
-    margin-bottom: 18px;
+    border-radius: 12px;
+    padding: 22px;
+    margin-bottom: 20px;
   }
 
   #zona-carga {
@@ -160,20 +160,45 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--borde); vertical-align: top; }
-  th { background: var(--panel-alt); color: var(--texto-tenue); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; }
-  td input {
-    width: 100%;
-    border: 1px solid transparent;
-    background: transparent;
-    font-size: 13px;
-    padding: 3px 4px;
-    border-radius: 4px;
-    font-family: inherit;
+   /* width: max-content (no 100%): con 19 columnas, forzar el ancho al del
+      contenedor apretaba cada celda al mínimo y cortaba los montos ("50,8"
+      en vez de "50.841,90") — ahora cada columna usa el ancho que necesita
+      su contenido, y el contenedor de arriba (overflow-x:auto) se encarga
+      del scroll horizontal si no entra todo en pantalla. */
+   table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 15px; }
+   th, td { padding: 13px 16px; text-align: left; border-bottom: 1px solid var(--borde); vertical-align: top; white-space: nowrap; }
+   th { background: var(--panel-alt); color: var(--texto-tenue); font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.03em; }
+   td input {
+     /* ancho en "ch" (proporcional al ancho de un caracter) en vez de
+        width:100% de una celda ya apretada — así el campo se ve completo
+        sin depender de cuánto pudo encoger la columna. */
+     width: 13ch;
+     border: 1px solid transparent;
+     background: transparent;
+     font-size: 15px;
+     padding: 5px 6px;
+     border-radius: 5px;
+     font-family: inherit;
+   }
+   /* Nro Comprobante es bastante más largo que el resto (~14 dígitos) */
+   td input[data-campo="nro_comprobante"] { width: 18ch; }
+   td input:hover, td input:focus { border-color: var(--borde); background: var(--panel-alt); outline: none; }
+   .fila-error td { color: var(--negativa); font-size: 14px; }
+
+  /* Fila de detalle igual a otra salvo el Nº de Factura — no se sabe si es
+     legítimo o el modelo repitió una fila, así que solo se avisa (nunca se
+     descarta sola). Ver indicesSospechosos(). */
+  tr.fila-sospechosa td { background: #fff8e1; }
+  tr.fila-sospechosa td input { background: transparent; }
+
+  /* Verificación de retención no superada (14/09) — no se guardó en el
+     histórico, hay que revisarla a mano contra el documento original. */
+  tr.fila-verificacion-fallida td { background: #fdecea; }
+  tr.fila-verificacion-fallida td input { background: transparent; }
+  .icono-sospechoso {
+    display: inline-block; width: 13px; height: 13px; color: #b45309;
+    vertical-align: -2px; margin-left: 4px; cursor: help;
   }
-  td input:hover, td input:focus { border-color: var(--borde); background: var(--panel-alt); outline: none; }
-  .fila-error td { color: var(--negativa); font-size: 12.5px; }
 
   .detalle-toggle {
     font-size: 11.5px;
@@ -202,20 +227,43 @@
 
   .chip-motor {
     display: inline-block;
-    font-size: 10.5px;
-    padding: 2px 7px;
+    font-size: 12px;
+    padding: 3px 10px;
     border-radius: 999px;
     background: rgba(0,168,132,0.12);
     color: var(--acento-oscuro);
     white-space: nowrap;
   }
   .chip-motor.respaldo { background: rgba(224,64,62,0.1); color: var(--negativa); }
+
+  /* Resumen de verificación (14/09) — un chip por página escaneada, en el
+     encabezado del panel de resultados, junto a "Escanear otro
+     documento": muestra de un vistazo lo que se leyó en los 3 campos de
+     la verificación (razón social/RIF nuestro + periodo fiscal) sin tener
+     que hacer scroll horizontal en la tabla, donde esos campos no se
+     muestran como columna aparte. */
+  .chip-verificacion {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(0,168,132,0.08);
+    border: 1px solid rgba(0,168,132,0.25);
+    color: var(--texto);
+  }
+  .chip-verificacion.fallo { background: #fdecea; border-color: rgba(224,64,62,0.35); }
+  .chip-verificacion i { width: 14px; height: 14px; flex-shrink: 0; }
+  .chip-verificacion i.ok { color: var(--acento-oscuro); }
+  .chip-verificacion i.fallo { color: var(--negativa); }
+  .chip-verificacion b { font-weight: 600; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1><i data-lucide="scan-text"></i> Escáner de Retenciones IVA</h1>
+  <h1><i data-lucide="scan-text"></i> Escáner de Retenciones IVA <span style="font-size:11px; font-weight:normal; color:var(--texto-tenue);" title="Fecha de modificación de servidor_retenciones.py en el servidor — si no coincide con el último cambio, hay un proceso viejo corriendo.">v. {{ version_servidor }}</span></h1>
   <div style="display:flex; align-items:center; gap:14px;">
     <a class="enlace-modulo" href="/menu"><i data-lucide="layout-grid"></i> Otros módulos</a>
     <a href="/api/historico/descargar" id="enlace-historico" title="Descarga el Excel con todas las extracciones guardadas hasta ahora">
@@ -242,6 +290,10 @@
       <div style="font-size:12px; margin-top:4px;">Acepta PDF (una o varias páginas), PNG, JPG, WEBP, BMP — máx. 30 MB</div>
       <input type="file" id="entrada-archivo" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp">
     </div>
+    <label style="display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--texto-tenue); margin-top:10px; cursor:pointer;" title="Sube el DPI del PDF (400 en vez de 300) y mejora contraste/nitidez de la imagen antes de mandarla al modelo — tarda un poco más, usalo solo si el documento se ve borroso o muy deteriorado.">
+      <input type="checkbox" id="checkbox-alta-resolucion" style="width:14px; height:14px; margin:0;">
+      Alta resolución (para facturas borrosas o muy deterioradas)
+    </label>
     <div id="mensaje-carga"></div>
     <div id="barra-progreso"><div id="barra-progreso-relleno"></div></div>
   </div>
@@ -251,22 +303,23 @@
       <button id="boton-exportar"><i data-lucide="file-spreadsheet"></i> Exportar a Excel</button>
       <button class="secundario" id="boton-nuevo"><i data-lucide="rotate-ccw"></i> Escanear otro documento</button>
     </div>
+    <div id="resumen-verificacion" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;"></div>
     <div style="overflow-x:auto;">
     <table>
       <thead>
         <tr>
           <th>Pág.</th>
           <th>Motor</th>
-          <th>Fecha</th>
+          <th title="Fecha de Emisión del comprobante (caja junto a Periodo Fiscal) — la emitió el Agente de Retención.">Fecha Emisión</th>
           <th>Nro Comprobante</th>
           <th>Cliente</th>
           <th>RIF Cliente</th>
           <th>Nº Factura</th>
+          <th title="Reubicada al lado de Nº Factura (14/09) para no confundirla con la nueva columna Fecha Emisión.">Fecha</th>
           <th>Nº Control</th>
           <th>Nota Débito</th>
           <th>Nota Crédito</th>
           <th>Tipo Trans</th>
-          <th>Doc. Afectado</th>
           <th>Total C/IVA</th>
           <th>Total S/IVA</th>
           <th>Base Imponible</th>
@@ -391,6 +444,7 @@ function mensajeProgreso(texto) {
 async function escanearArchivo(archivo) {
   ultimosResultados = [];
   cuerpoTabla.innerHTML = "";
+  document.getElementById("resumen-verificacion").innerHTML = "";
   panelResultados.style.display = "block";
   barraProgreso.classList.add("visible");
   barraProgresoRelleno.style.width = "0%";
@@ -398,6 +452,9 @@ async function escanearArchivo(archivo) {
 
   const datosFormulario = new FormData();
   datosFormulario.append("archivo", archivo);
+  if (document.getElementById("checkbox-alta-resolucion").checked) {
+    datosFormulario.append("alta_resolucion", "1");
+  }
 
   try {
     const respuesta = await fetch("/api/escanear", { method: "POST", body: datosFormulario });
@@ -461,33 +518,108 @@ function escHtml(s) {
 const COLUMNAS_DETALLE = [
   ["numero_factura", "Nº Factura"], ["numero_control", "Nº Control"],
   ["numero_nota_debito", "Nota Débito"], ["numero_nota_credito", "Nota Crédito"],
-  ["tipo_trans", "Tipo Trans"], ["documento_afectado", "Doc. Afectado"],
+  ["tipo_trans", "Tipo Trans"],
   ["total_compras_con_iva", "Total C/IVA"], ["total_compras_sin_iva", "Total S/IVA"],
   ["base_imponible", "Base Imponible"], ["porcentaje_alicuota", "% Alíc"],
   ["impuesto_iva", "Impuesto IVA"], ["iva_retenido", "IVA Retenido"],
 ];
-const TOTAL_COLUMNAS = 6 + COLUMNAS_DETALLE.length + 1; // pág+motor+fecha+comprobante+cliente+rif + 12 detalle + acciones
+const TOTAL_COLUMNAS = 7 + COLUMNAS_DETALLE.length + 1; // pág+motor+fecha_emision_rec+comprobante+cliente+rif + fecha(reubicada junto a nº factura) + 11 detalle + acciones
 
-function filaDetalle(r, indice, esUltima) {
+// No hay forma de saber, solo mirando el JSON, si dos filas de detalle
+// iguales salvo el número de factura son dos facturas reales bajo la
+// misma nota/transacción (legítimo) o el modelo clonando una fila que no
+// vio bien (reportado en vivo, 03/09) — así que nunca se descartan solas,
+// solo se marcan para que alguien las compare contra el documento
+// original antes de exportar.
+function indicesSospechosos(detalle) {
+  const claves = COLUMNAS_DETALLE.map(([campo]) => campo).filter((c) => c !== "numero_factura");
+  const firmas = detalle.map((fila) => claves.map((c) => String(fila[c] ?? "").trim()).join("|"));
+  const sospechosos = new Set();
+  firmas.forEach((firma, i) => {
+    if (!firma.replace(/\|/g, "")) return; // fila sin ningún dato no cuenta como "igual" a otra vacía
+    firmas.forEach((otra, j) => {
+      if (i !== j && firma === otra) { sospechosos.add(i); sospechosos.add(j); }
+    });
+  });
+  return sospechosos;
+}
+
+// Umbral de legibilidad baja (09/09) — debe coincidir con
+// UMBRAL_LEGIBILIDAD_BAJA en bin/evaluar_legibilidad.py. No bloquea nada,
+// solo avisa cuál documento conviene revisar contra el original antes de
+// confiar en los números a ojo cerrado (más probable que el motor se
+// equivoque en una imagen borrosa/de baja resolución).
+const UMBRAL_LEGIBILIDAD_BAJA = 50;
+
+function filaDetalle(r, indice, esUltima, sospechosa) {
   const c = r.campos;
   const fila = indice === null ? {} : (c.detalle[indice] || {});
   const idTexto = `crudo-${r.pagina}`;
   const esRespaldo = (r.motor || "").includes("respaldo");
+  const legibilidadBaja = typeof r.legibilidad === "number" && r.legibilidad < UMBRAL_LEGIBILIDAD_BAJA;
+  const verificacionFallida = r.verificacion && r.verificacion.ok === false;
   const celdaDetalle = (campo) => indice === null
     ? `<td>—</td>`
     : `<td><input type="text" data-detalle="${indice}" data-campo="${campo}" value="${escHtml(fila[campo] ?? "")}" placeholder="—"></td>`;
+  const [primeraColumnaDetalle, ...restoColumnasDetalle] = COLUMNAS_DETALLE; // primeraColumnaDetalle = numero_factura
   return `
-    <tr data-pagina="${r.pagina}" ${indice !== null ? `data-indice="${indice}"` : ""}>
-      <td>${r.pagina}</td>
+    <tr data-pagina="${r.pagina}" ${indice !== null ? `data-indice="${indice}"` : ""} class="${sospechosa ? "fila-sospechosa" : ""} ${verificacionFallida ? "fila-verificacion-fallida" : ""}">
+      <td>
+        ${r.pagina}
+        ${sospechosa ? `<i data-lucide="alert-triangle" class="icono-sospechoso" title="Esta fila salió idéntica a otra del mismo comprobante, salvo el Nº de Factura — puede ser normal (varias facturas bajo la misma nota) o el modelo repitió una fila. Compará contra el documento original."></i>` : ""}
+        ${legibilidadBaja ? `<i data-lucide="image-off" class="icono-sospechoso" title="Legibilidad baja (${r.legibilidad}%): esta imagen salió borrosa o de baja resolución — el motor de visión es más propenso a equivocarse en números acá. Compará contra el documento original."></i>` : ""}
+        ${verificacionFallida ? `<i data-lucide="shield-alert" class="icono-sospechoso" title="No pasó la verificación de retención — no se guardó en el histórico. Ver detalle abajo de la tabla."></i>` : ""}
+      </td>
       <td><span class="chip-motor ${esRespaldo ? "respaldo" : ""}" title="${esRespaldo ? "El motor principal estaba saturado, respondió el respaldo" : ""}">${r.motor || "—"}</span></td>
-      <td><input type="text" data-campo="fecha" value="${escHtml(c.fecha ?? "")}" placeholder="—"></td>
+      <td><input type="text" data-campo="fecha_emision_rec" value="${escHtml(c.fecha_emision_rec ?? "")}" placeholder="—"></td>
       <td><input type="text" data-campo="nro_comprobante" value="${escHtml(c.nro_comprobante ?? "")}" placeholder="—"></td>
       <td><input type="text" data-campo="cliente" value="${escHtml(c.cliente ?? "")}" placeholder="—"></td>
       <td><input type="text" data-campo="rif_cliente" value="${escHtml(c.rif_cliente ?? "")}" placeholder="—"></td>
-      ${COLUMNAS_DETALLE.map(([campo]) => celdaDetalle(campo)).join("")}
-      <td>${esUltima ? `<span class="detalle-toggle" data-toggle="${idTexto}">ver texto OCR</span>` : ""}</td>
+      ${celdaDetalle(primeraColumnaDetalle[0])}
+      <td><input type="text" data-campo="fecha" value="${escHtml(c.fecha ?? "")}" placeholder="—"></td>
+      ${restoColumnasDetalle.map(([campo]) => celdaDetalle(campo)).join("")}
+      <td>
+        ${esUltima ? `<button type="button" class="secundario boton-calcular" data-pagina="${r.pagina}" style="padding:4px 9px; font-size:11.5px; gap:4px;"><i data-lucide="calculator" style="width:12px;height:12px;"></i> Calcular</button>` : ""}
+        ${esUltima ? `<span class="detalle-toggle" data-toggle="${idTexto}">ver texto OCR</span>` : ""}
+      </td>
     </tr>
   `;
+}
+
+// Legibilidad según la propia IA (09/09, campo "legibilidad_ia" del
+// JSON): a pedido del usuario, no es un cálculo mecánico aparte (eso ya
+// existía como ícono de aviso, ver UMBRAL_LEGIBILIDAD_BAJA) sino la
+// confianza que EL MODELO reporta sobre su propia lectura de esta
+// página — se muestra afuera de la fila de campos editables, siempre
+// visible, coloreada según qué tan segura estuvo.
+function bloqueLegibilidadIA(campos) {
+  const valor = Number(campos.legibilidad_ia);
+  if (!Number.isFinite(valor)) return "";
+  const color = valor >= 80 ? "var(--acento-oscuro)" : valor >= 50 ? "#b45309" : "var(--negativa)";
+  return `<div style="font-size:12px; color:${color}; font-weight:600; margin-bottom:6px;">
+    <i data-lucide="brain-circuit" style="width:13px;height:13px;vertical-align:-2px;"></i>
+    El modelo dice que leyó esta página con ${valor}% de confianza
+  </div>`;
+}
+
+// Verificación de retención (14/09, a pedido explícito del usuario, ver
+// ocr_retenciones_core.verificar_retencion): si el comprobante no
+// identifica bien a Cristmedicals como Proveedor o no trae Periodo
+// Fiscal, el backend NO lo guardó en el histórico — este bloque avisa
+// claramente cuál chequeo falló y por qué, para que se revise a mano
+// contra el documento original antes de procesarlo por otra vía.
+function bloqueVerificacion(r) {
+  const verificacion = r.verificacion;
+  if (!verificacion || verificacion.ok) return "";
+  const items = (verificacion.errores || []).map((error) => `<li>${escHtml(error)}</li>`).join("");
+  return `<div style="background:#fdecea; border:1px solid var(--negativa); border-radius:8px; padding:10px 14px; margin-bottom:8px; color:var(--negativa); font-size:13px;">
+    <div style="font-weight:700; display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+      <i data-lucide="shield-alert" style="width:15px;height:15px;"></i>
+      Verificación de retención NO superada — esta página NO se guardó en el histórico
+    </div>
+    <ul style="margin:0; padding-left:18px;">${items}</ul>
+    <div style="margin-top:4px; font-size:12px;">Revisá el documento original y procesá esta retención a mano.</div>
+  </div>`;
 }
 
 function filaResultado(r) {
@@ -495,18 +627,67 @@ function filaResultado(r) {
     return `<tr class="fila-error" data-pagina="${r.pagina}"><td>${r.pagina}</td><td colspan="${TOTAL_COLUMNAS - 1}">⚠️ ${escHtml(r.error)}</td></tr>`;
   }
   const detalle = r.campos.detalle || [];
+  const sospechosos = indicesSospechosos(detalle);
   const filas = detalle.length
-    ? detalle.map((_, indice) => filaDetalle(r, indice, indice === detalle.length - 1)).join("")
-    : filaDetalle(r, null, true);
+    ? detalle.map((_, indice) => filaDetalle(r, indice, indice === detalle.length - 1, sospechosos.has(indice))).join("")
+    : filaDetalle(r, null, true, false);
   const idTexto = `crudo-${r.pagina}`;
   return `
     ${filas}
-    <tr>
-      <td colspan="${TOTAL_COLUMNAS}" style="border-bottom:1px solid var(--borde); padding:0 10px 8px;">
+    <tr data-pagina="${r.pagina}">
+      <td colspan="${TOTAL_COLUMNAS}" style="border-bottom:1px solid var(--borde); padding:8px 10px 8px;">
+        ${bloqueVerificacion(r)}
+        ${bloqueLegibilidadIA(r.campos)}
         <div class="texto-crudo" id="${idTexto}">${(r.texto_ocr || "(sin texto)").replace(/</g, "&lt;")}</div>
       </td>
     </tr>
   `;
+}
+
+// Botón "Calcular retención" (09/09, a pedido explícito del usuario): la
+// extracción (GOT-OCR+puente, Qwen-VL, etc.) solo llena los campos tal
+// cual los leyó — este botón es el paso APARTE que corre la fórmula de
+// oro (script de Python, /api/calcular_retencion) sobre lo que está
+// actualmente en pantalla (incluidas correcciones manuales), sin volver
+// a leer la imagen.
+async function calcularRetencion(pagina, boton) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado || !resultado.ok) return;
+
+  boton.disabled = true;
+  boton.innerHTML = `<i data-lucide="loader-circle" class="girando" style="width:12px;height:12px;"></i> Calculando…`;
+  refrescarIconos();
+  try {
+    const respuesta = await fetch("/api/calcular_retencion", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ campos: resultado.campos }),
+    });
+    const datos = await respuesta.json();
+    if (!respuesta.ok) throw new Error(datos.error || "No se pudo calcular la retención");
+    resultado.campos = datos.campos;
+    rerenderPagina(pagina);
+  } catch (error) {
+    alert(`Error al calcular: ${error.message}`);
+    boton.disabled = false;
+    boton.innerHTML = `<i data-lucide="calculator" style="width:12px;height:12px;"></i> Calcular`;
+    refrescarIconos();
+  }
+}
+
+function rerenderPagina(pagina) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado) return;
+  const filasExistentes = Array.from(cuerpoTabla.querySelectorAll(`tr[data-pagina="${pagina}"]`));
+  if (!filasExistentes.length) return;
+  const ancla = filasExistentes[0].previousElementSibling;
+  filasExistentes.forEach((fila) => fila.remove());
+  const html = filaResultado(resultado);
+  if (ancla) ancla.insertAdjacentHTML("afterend", html);
+  else cuerpoTabla.insertAdjacentHTML("afterbegin", html);
+  refrescarIconos();
+  activarFila(pagina);
+  actualizarResumenVerificacion();
 }
 
 function activarFila(pagina) {
@@ -518,6 +699,10 @@ function activarFila(pagina) {
       toggle.addEventListener("click", () => {
         document.getElementById(toggle.dataset.toggle).classList.toggle("visible");
       });
+    });
+
+    fila.querySelectorAll(".boton-calcular").forEach((boton) => {
+      boton.addEventListener("click", () => calcularRetencion(Number(boton.dataset.pagina), boton));
     });
 
     // Los campos son editables — cualquier corrección manual se refleja en
@@ -541,10 +726,36 @@ function activarFila(pagina) {
   });
 }
 
+// Resumen de verificación (14/09, a pedido explícito del usuario): un
+// chip por página en el encabezado del panel de resultados, junto a
+// "Escanear otro documento", con lo que se leyó en los 3 campos de la
+// verificación (razón social/RIF nuestro + periodo fiscal) — de un
+// vistazo, sin tener que ir a buscarlo en el texto OCR crudo, ya que esos
+// 3 campos no tienen columna propia en la tabla (para no agregarle 3
+// columnas más a una tabla que ya tiene bastantes).
+function actualizarResumenVerificacion() {
+  const contenedor = document.getElementById("resumen-verificacion");
+  if (!contenedor) return;
+  contenedor.innerHTML = ultimosResultados
+    .filter((r) => r.ok)
+    .map((r) => {
+      const c = r.campos;
+      const verificacion = r.verificacion || { ok: true, errores: [] };
+      const fallo = verificacion.ok === false;
+      const titulo = fallo ? escHtml(verificacion.errores.join(" | ")) : "Verificación superada — se guardó en el histórico";
+      return `<div class="chip-verificacion ${fallo ? "fallo" : ""}" title="${titulo}">
+        <i data-lucide="${fallo ? "shield-alert" : "shield-check"}" class="${fallo ? "fallo" : "ok"}"></i>
+        <span>Pág. ${r.pagina}: <b>${escHtml(c.nombre_proveedor || "—")}</b> · ${escHtml(c.rif_proveedor || "—")} · ${escHtml(c.periodo_fiscal || "—")}</span>
+      </div>`;
+    }).join("");
+  refrescarIconos();
+}
+
 function agregarFila(resultado) {
   cuerpoTabla.insertAdjacentHTML("beforeend", filaResultado(resultado));
   refrescarIconos();
   activarFila(resultado.pagina);
+  actualizarResumenVerificacion();
 }
 
 document.getElementById("boton-exportar").addEventListener("click", async () => {
@@ -571,6 +782,7 @@ document.getElementById("boton-nuevo").addEventListener("click", () => {
   mensajeCarga.textContent = "";
   entradaArchivo.value = "";
   ultimosResultados = [];
+  document.getElementById("resumen-verificacion").innerHTML = "";
 });
 
 refrescarIconos();

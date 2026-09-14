@@ -44,7 +44,7 @@ Endpoints:
               "endpoint": "/api/escanear",
               "metodo": "POST",
               "campo_archivo": "archivo",
-              "campos_extraidos": ["fecha", "nro_comprobante", "cliente", "nro_factura", "rif_cliente", "monto_retenido", "detalle"]
+              "campos_extraidos": ["fecha", "nro_comprobante", "cliente", "nro_factura", "rif_cliente", "monto_retenido", "nombre_proveedor", "rif_proveedor", "periodo_fiscal", "fecha_emision_rec", "detalle"]
             },
             "abonos": {
               "endpoint": "/api/escanear_abono",
@@ -74,6 +74,27 @@ Endpoints:
         procesadas en una sola respuesta (no streaming — más simple de
         consumir desde cualquier lenguaje/herramienta).
 
+        Cada resultado exitoso trae además un bloque "verificacion"
+        (14/09, ver ocr_retenciones_core.verificar_retencion): "ok": true
+        si el comprobante pasa los 6 chequeos de cumplimiento, o "ok":
+        false con "errores" (un mensaje en texto plano por cada chequeo
+        que falló):
+          1. Proveedor/Sujeto Retenido = CRIST MEDICALS, C.A. (nombre)
+          2. Proveedor/Sujeto Retenido = RIF J-41223670-9
+          3. Periodo Fiscal legible (no vacío)
+          4. Nº de Comprobante con exactamente 14 dígitos (formato
+             AAAAMMSSSSSSSS, Punto 1 de la providencia SENIAT)
+          5. El año/mes de esos 14 dígitos coincide con el año/mes de la
+             Fecha de Emisión (si no coincide, el comprobante puede estar
+             anulado/ser inválido)
+          6. Cada "numero_factura" de "detalle" tiene el formato
+             "00-XXXXXX" (dos ceros + 6 dígitos)
+        Esta API es sin estado (no guarda nada), así que no bloquea nada
+        por su cuenta — es información para que el consumidor decida si
+        confía en la extracción o la manda a revisión manual (mismo
+        criterio que "confianza"/"validado" en /api/escanear_abono, ver
+        más abajo).
+
         Respuesta:
         {
           "total_paginas": 2,
@@ -90,30 +111,35 @@ Endpoints:
                 "nro_factura": "00154065, 00153866, 00155170",
                 "rif_cliente": "J-41313664-3",
                 "monto_retenido": "8488.11",
+                "nombre_proveedor": "CRIST MEDICALS, C.A.",
+                "rif_proveedor": "J-41223670-9",
+                "periodo_fiscal": "AGOSTO/2026",
+                "fecha_emision_rec": "24/08/2026",
                 "detalle": [
                   {
                     "numero_factura": "00154065", "numero_control": "00-718516",
                     "numero_nota_debito": null, "numero_nota_credito": null, "tipo_trans": "01",
-                    "documento_afectado": "00154065", "total_compras_con_iva": "8476.56",
+                    "total_compras_con_iva": "8476.56",
                     "total_compras_sin_iva": "0.00", "base_imponible": "7307.38",
                     "porcentaje_alicuota": "16.00", "impuesto_iva": "1169.18", "iva_retenido": "876.89"
                   },
                   {
                     "numero_factura": "00153866", "numero_control": "00-718317",
                     "numero_nota_debito": null, "numero_nota_credito": null, "tipo_trans": "01",
-                    "documento_afectado": "00153866", "total_compras_con_iva": "65865.55",
+                    "total_compras_con_iva": "65865.55",
                     "total_compras_sin_iva": "0.00", "base_imponible": "56780.65",
                     "porcentaje_alicuota": "16.00", "impuesto_iva": "9084.90", "iva_retenido": "6813.68"
                   },
                   {
                     "numero_factura": "00155170", "numero_control": "00-719621",
                     "numero_nota_debito": null, "numero_nota_credito": null, "tipo_trans": "01",
-                    "documento_afectado": "00155170", "total_compras_con_iva": "232089.53",
+                    "total_compras_con_iva": "232089.53",
                     "total_compras_sin_iva": "224380.04", "base_imponible": "6646.11",
                     "porcentaje_alicuota": "16.00", "impuesto_iva": "1063.38", "iva_retenido": "797.54"
                   }
                 ]
-              }
+              },
+              "verificacion": { "ok": true, "errores": [] }
             },
             {
               "pagina": 2,
@@ -225,9 +251,11 @@ Ejecutar:
 """
 
 import os
+from io import BytesIO
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 
+import bd_ocr
 import ocr_abonos_core as ocr_abonos
 import ocr_pedidos_core as ocr_pedidos
 import ocr_ps_core as ocr_ps
@@ -301,7 +329,7 @@ def estado():
     })
 
 
-def _escanear_con(motor_ocr):
+def _escanear_con(motor_ocr, post_proceso=None):
     archivo = request.files.get("archivo")
     if archivo is None or not archivo.filename:
         return jsonify({"error": "Sube un archivo (campo 'archivo')"}), 400
@@ -316,12 +344,27 @@ def _escanear_con(motor_ocr):
     except Exception as error:
         return jsonify({"error": f"No se pudo procesar el archivo: {error}"}), 500
 
+    if post_proceso:
+        for resultado in resultados:
+            if resultado.get("ok"):
+                post_proceso(resultado)
+
     return jsonify({"total_paginas": len(resultados), "resultados": resultados})
+
+
+def _agregar_verificacion_retencion(resultado):
+    """Adjunta "verificacion" (14/09, a pedido explícito del usuario, ver
+    ocr_retenciones_core.verificar_retencion) a cada página extraída con
+    éxito. A diferencia de servidor_retenciones.py, esta API es sin
+    estado — no guarda ningún histórico que bloquear — así que acá
+    "verificacion" es solo información adicional para que el consumidor
+    decida qué hacer con una página que no la pasó."""
+    resultado["verificacion"] = ocr_retenciones.verificar_retencion(resultado["campos"])
 
 
 @app.route("/api/escanear", methods=["POST"])
 def escanear_retenciones():
-    return _escanear_con(ocr_retenciones)
+    return _escanear_con(ocr_retenciones, post_proceso=_agregar_verificacion_retencion)
 
 
 @app.route("/api/escanear_abono", methods=["POST"])
@@ -339,7 +382,55 @@ def escanear_pedido():
     return _escanear_con(ocr_pedidos)
 
 
+@app.route("/api/facturas/<numero_factura>/documento", methods=["GET"])
+def descargar_documento_retencion(numero_factura):
+    """Recibe un numero_factura por la URL y devuelve (descarga) el PDF
+    real del comprobante de retención que lo tiene (09/09, a pedido
+    explícito del usuario — mismo endpoint que ya existe en OCR-PS). El
+    PDF se guarda y vincula automáticamente en MySQL cuando esa
+    retención se sube con "Cargar al servidor" en la interfaz interna —
+    este endpoint solo lo recupera. Coincidencia EXACTA: si el
+    comprobante lista varios números juntos (ej. "4058,4059,4060"), solo
+    matchea cuando nro_factura es ESE número exacto, no una lista que lo
+    contenga. 404 si no hay ningún documento vinculado a ese número."""
+    documento = bd_ocr.obtener_documento_retencion_por_factura(numero_factura)
+    if documento is None:
+        return jsonify({"ok": False, "error": f"No hay ningún documento vinculado a la factura {numero_factura}"}), 404
+    return send_file(
+        BytesIO(documento["contenido"]),
+        as_attachment=True,
+        download_name=documento["nombre_archivo"] or f"factura_{numero_factura}.pdf",
+        mimetype="application/pdf",
+    )
+
+
+@app.route("/api/pedidos/consulta", methods=["GET"])
+def consultar_pedido():
+    """Conector de SOLO LECTURA para otros sistemas (motor/ara_coder de
+    ARA_PROYECT): responde quién subió una cotización (usuario del ERP vía
+    SSO), cuándo, y el número de cotización, leyendo bd_ocr.pedidos_ocr.
+    Se consulta por número de cotización y/o código de cliente."""
+    numero = request.args.get("numero_cotizacion", "").strip()
+    cliente = request.args.get("cod_cliente", "").strip()
+    if not numero and not cliente:
+        return jsonify({"ok": False, "error": "Pasa 'numero_cotizacion' o 'cod_cliente'"}), 400
+    if numero:
+        try:
+            numero_int = int(numero)
+        except ValueError:
+            return jsonify({"ok": False, "error": "'numero_cotizacion' debe ser entero"}), 400
+    else:
+        numero_int = None
+    try:
+        filas = bd_ocr.consultar_pedidos_ocr(numero_cotizacion=numero_int, cod_cliente=cliente or None)
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)}), 502
+    return jsonify({"ok": True, "encontrados": len(filas), "pedidos": filas})
+
+
 if __name__ == "__main__":
+    from waitress import serve
+
     puerto = int(os.environ.get("PUERTO_API_RETENCIONES", 5031))
     print(
         f"API pública de OCR (retenciones + abonos + OCR-PS + pedidos, sin interfaz) — puerto {puerto}, "
@@ -348,4 +439,7 @@ if __name__ == "__main__":
         f"ocr-ps: {ocr_ps.MODELO_VISION_DEEPSEEK} (DeepSeek), "
         f"pedidos: {ocr_pedidos.MODELO_VISION_DEEPSEEK} (DeepSeek)"
     )
-    app.run(host="0.0.0.0", port=puerto, debug=True, threaded=True, use_reloader=False)
+    # Waitress (servidor WSGI de producción) en vez del server de desarrollo
+    # de Flask — la consumen otros sistemas de forma concurrente (04/09).
+    print(f"Sirviendo con Waitress en el puerto {puerto}…")
+    serve(app, host="0.0.0.0", port=puerto, threads=14)

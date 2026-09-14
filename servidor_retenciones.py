@@ -27,6 +27,7 @@ import json
 import os
 import threading
 import time
+import uuid
 from datetime import datetime
 
 from flask import Flask, Response, jsonify, render_template, request, send_file
@@ -49,6 +50,15 @@ from consultar_proveedor_profit import buscar_proveedor
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024  # 30 MB
 
+# Fecha de modificación de ESTE archivo en disco, mostrada chiquita en el
+# header de la página (14/09) — para poder confirmar de un vistazo, sin
+# entrar por SSH/terminal, que el servidor corriendo cargó el código
+# actual y no quedó un proceso viejo pegado sirviendo una versión
+# anterior (pasó dos veces antes en este proyecto: /pedidos en Pedidos
+# OCR y esta misma página de Retenciones, ambas por procesos que llevaban
+# días corriendo desde antes del último cambio).
+VERSION_SERVIDOR = datetime.fromtimestamp(os.path.getmtime(__file__)).strftime("%d/%m/%Y %H:%M")
+
 # ---------------------------------------------------------------------------
 # Histórico global: cada extracción exitosa (de cualquier sesión/usuario)
 # queda guardada acá, no solo en la tabla de la página actual — así no se
@@ -60,8 +70,20 @@ RUTA_HISTORICO = os.path.join(DIRECTORIO_BASE, "data", "retenciones_historico.xl
 ENCABEZADOS_HISTORICO = [
     "Fecha de registro", "Archivo", "Motor",
     "Fecha", "Nro Comprobante", "Cliente", "Nro Factura", "RIF Cliente", "Monto Retenido",
+    "Ref Documento",  # agregado 09/09 (endpoint de descarga del PDF por numero_factura,
+    # ver bd_ocr.obtener_documento_retencion_por_factura) — va al final para no correr
+    # las columnas de un histórico que ya tenía filas reales (mismo criterio que
+    # ENCABEZADOS_HISTORICO_PEDIDOS en servidor_ocr_ps.py).
 ]
 _lock_historico = threading.Lock()
+
+# PDF/foto TAL CUAL se subió (no las páginas ya convertidas a imagen para
+# el OCR) — es la evidencia del documento original, y lo que se termina
+# guardando como BLOB en MySQL (documentos_retenciones) cuando se pulsa
+# "Cargar al servidor". Antes del 09/09 esto no se guardaba en ningún
+# lado: una vez procesado el documento, el PDF original se perdía — no
+# había forma de recuperarlo después por numero_factura.
+RUTA_DOCUMENTOS = os.path.join(DIRECTORIO_BASE, "data", "documentos_retenciones")
 
 # Histórico del DETALLE (una fila por factura de la tabla "Compras Internas
 # e Importaciones" de cada comprobante) — archivo aparte, no columnas
@@ -84,6 +106,13 @@ def _abrir_o_crear_historico():
         libro = load_workbook(RUTA_HISTORICO)
         hoja = libro.active
         assert hoja is not None
+        # Migración: "Ref Documento" se agregó el 09/09 — un histórico
+        # creado antes de eso todavía tiene el encabezado viejo (9
+        # columnas). Se agrega el título que falta en la 10ma para que las
+        # filas nuevas (que sí mandan la referencia) no queden sin encabezado.
+        if hoja.cell(row=1, column=len(ENCABEZADOS_HISTORICO)).value != "Ref Documento":
+            hoja.cell(row=1, column=len(ENCABEZADOS_HISTORICO), value="Ref Documento")
+            libro.save(RUTA_HISTORICO)
         return libro, hoja
 
     os.makedirs(os.path.dirname(RUTA_HISTORICO), exist_ok=True)
@@ -98,7 +127,26 @@ def _abrir_o_crear_historico():
     return libro, hoja
 
 
-def guardar_en_historico_global(nombre_archivo, motor, campos):
+def guardar_documento_original(contenido, nombre_archivo):
+    """Guarda en disco el PDF/foto TAL CUAL se subió (mismo patrón que
+    servidor_ocr_ps.py) — un mismo archivo subido genera un solo nombre
+    guardado acá, compartido por todas las páginas que salgan de él, para
+    que 'Cargar al servidor' después lo suba una sola vez a la BD (ver
+    bd_ocr.obtener_o_guardar_documento_retencion). Devuelve el nombre
+    guardado (para anotarlo en el histórico) o None si no se pudo escribir."""
+    try:
+        os.makedirs(RUTA_DOCUMENTOS, exist_ok=True)
+        extension = nombre_archivo.rsplit(".", 1)[-1].lower() if "." in nombre_archivo else "bin"
+        nombre_guardado = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.{extension}"
+        with open(os.path.join(RUTA_DOCUMENTOS, nombre_guardado), "wb") as f:
+            f.write(contenido)
+        return nombre_guardado
+    except OSError as error:
+        print(f"[documentos retenciones] No se pudo guardar el archivo original: {error}")
+        return None
+
+
+def guardar_en_historico_global(nombre_archivo, motor, campos, ref_documento=None):
     """Agrega una fila al Excel histórico en /data. Protegido con un lock
     para que dos páginas procesándose casi al mismo tiempo no se pisen al
     abrir/guardar el archivo. Si falla (ej. el archivo está abierto en
@@ -117,6 +165,7 @@ def guardar_en_historico_global(nombre_archivo, motor, campos):
                 campos.get("nro_factura"),
                 campos.get("rif_cliente"),
                 campos.get("monto_retenido"),
+                ref_documento,
             ])
             libro.save(RUTA_HISTORICO)
         except Exception as error:
@@ -171,15 +220,30 @@ def guardar_detalle_en_historico(nombre_archivo, motor, nro_comprobante, filas_d
             print(f"[historico detalle OCR] No se pudo guardar en {RUTA_HISTORICO_DETALLE}: {error}")
 
 
-def procesar_imagen_y_guardar(imagen_bytes, nombre_archivo, numero_pagina):
+def procesar_imagen_y_guardar(imagen_bytes, nombre_archivo, numero_pagina, ref_documento=None):
     """Envoltorio sobre ocr.procesar_imagen que además registra el
     resultado exitoso en el histórico local — eso es específico de esta
-    interfaz, no de la inteligencia en sí (la API pública no lo hace)."""
+    interfaz, no de la inteligencia en sí (la API pública no lo hace).
+    `ref_documento` (09/09) es el nombre con el que se guardó el PDF/foto
+    original en disco (ver guardar_documento_original) — se anota en el
+    histórico para poder recuperarlo después desde "Cargar al servidor".
+
+    Verificación de retención (14/09, a pedido explícito del usuario, ver
+    ocr.verificar_retencion): si el comprobante no identifica bien a
+    Cristmedicals como Proveedor o no trae Periodo Fiscal, NO se guarda en
+    ninguno de los dos históricos — queda solo en pantalla, marcado con el
+    motivo del fallo, para que alguien lo revise a mano contra el
+    documento original antes de procesarlo por otra vía. `resultado["ok"]`
+    sigue siendo True (el OCR sí extrajo algo) — lo que cambia es
+    `resultado["verificacion"]`, que el frontend usa para bloquear/avisar."""
     resultado = ocr.procesar_imagen(imagen_bytes, nombre_archivo, numero_pagina)
     if resultado.get("ok"):
         campos = resultado["campos"]
-        guardar_en_historico_global(nombre_archivo, resultado["motor"], campos)
-        guardar_detalle_en_historico(nombre_archivo, resultado["motor"], campos.get("nro_comprobante"), campos.get("detalle"))
+        verificacion = ocr.verificar_retencion(campos)
+        resultado["verificacion"] = verificacion
+        if verificacion["ok"]:
+            guardar_en_historico_global(nombre_archivo, resultado["motor"], campos, ref_documento)
+            guardar_detalle_en_historico(nombre_archivo, resultado["motor"], campos.get("nro_comprobante"), campos.get("detalle"))
     return resultado
 
 
@@ -189,7 +253,7 @@ def procesar_imagen_y_guardar(imagen_bytes, nombre_archivo, numero_pagina):
 
 @app.route("/")
 def index():
-    return render_template("retenciones.html")
+    return render_template("retenciones.html", version_servidor=VERSION_SERVIDOR)
 
 
 @app.route("/menu")
@@ -199,7 +263,7 @@ def menu():
 
 @app.route("/api/estado-ocr", methods=["GET"])
 def estado_ocr():
-    cadena_respaldo = []
+    cadena_respaldo = [f"{ocr.MODELO_VISION_DEEPSEEK} (DeepSeek)"]
     if ocr.clave_google:
         cadena_respaldo.append(f"{ocr.MODELO_VISION} (Gemini)")
     if ocr.clave_openrouter:
@@ -207,9 +271,9 @@ def estado_ocr():
     return jsonify({
         "conectado": True,
         "detalle": {
-            "modelo_vision": ocr.MODELO_VISION_DEEPSEEK,
-            "proveedor": "DeepSeek",
-            "respaldo": " → ".join(cadena_respaldo) if cadena_respaldo else None,
+            "modelo_vision": ocr.MODELO_VISION_QWEN,
+            "proveedor": "Qwen-VL (local)",
+            "respaldo": " → ".join(cadena_respaldo),
         },
     })
 
@@ -227,15 +291,34 @@ def escanear():
     contenido = archivo.read()
     nombre_archivo = archivo.filename
 
+    # Guarda el PDF/foto TAL CUAL se subió (antes de cualquier realce de
+    # calidad) — es la evidencia del documento original, la que se termina
+    # subiendo a MySQL cuando se pulsa "Cargar al servidor" (09/09, para
+    # poder descargarlo después por numero_factura). Un solo archivo
+    # guardado por documento subido, compartido por todas sus páginas.
+    ref_documento = guardar_documento_original(contenido, nombre_archivo)
+
+    # Checkbox "Alta resolución" (09/09): para facturas borrosas o mal
+    # digitalizadas — sube el DPI de renderizado del PDF (400 en vez de
+    # 300) y aplica realce de contraste/nitidez (ver
+    # ocr.mejorar_calidad_imagen) tanto al PDF renderizado como a una
+    # imagen subida directo. No va prendido por defecto porque el realce
+    # tarda un poco más y en un documento ya nítido no aporta nada.
+    alta_resolucion = request.form.get("alta_resolucion", "").lower() in ("1", "true", "on", "si")
+
     if extension == "pdf":
         try:
-            imagenes = ocr.pdf_a_imagenes(contenido)
+            dpi = ocr.DPI_ALTA_RESOLUCION if alta_resolucion else 300
+            imagenes = ocr.pdf_a_imagenes(contenido, dpi=dpi)
         except Exception as error:
             return jsonify({"error": f"No se pudo leer el PDF: {error}"}), 400
         if not imagenes:
             return jsonify({"error": "El PDF no tiene páginas"}), 400
     else:
         imagenes = [contenido]
+
+    if alta_resolucion:
+        imagenes = [ocr.mejorar_calidad_imagen(imagen) for imagen in imagenes]
 
     def generar():
         try:
@@ -260,6 +343,24 @@ def escanear():
             return
 
     return Response(generar(), mimetype="application/x-ndjson")
+
+
+@app.route("/api/calcular_retencion", methods=["POST"])
+def calcular_retencion():
+    """Botón "Calcular retención" (09/09, a pedido explícito del usuario):
+    la extracción (GOT-OCR+puente, Qwen-VL, etc.) solo llena los campos
+    tal cual los leyó, sin calcular nada — este endpoint recibe esos
+    campos (ya editados/revisados a mano en la pantalla si hizo falta) y
+    aplica la fórmula de oro aparte, sin volver a tocar la imagen."""
+    payload = request.get_json(silent=True) or {}
+    campos = payload.get("campos")
+    if not isinstance(campos, dict):
+        return jsonify({"error": "Falta 'campos' en el cuerpo de la petición"}), 400
+    try:
+        campos_calculados = ocr.calcular_retencion_documento(campos)
+    except Exception as error:
+        return jsonify({"error": f"No se pudo calcular la retención: {error}"}), 500
+    return jsonify({"ok": True, "campos": campos_calculados})
 
 
 @app.route("/api/proveedor/buscar", methods=["GET"])
@@ -289,22 +390,37 @@ def exportar_excel():
     assert hoja is not None
     hoja.title = "Retenciones IVA"
 
-    encabezados = ["Página", "Archivo", "Motor", "Fecha", "Nro Comprobante", "Cliente", "Nro Factura", "RIF Cliente", "Monto Retenido"]
+    # Una fila por cada factura de campos.detalle — un comprobante puede
+    # traer varias (mismo criterio que la tabla en pantalla, ver
+    # filaResultado()/filaDetalle() en templates/retenciones.html). Antes
+    # esto escribía una sola fila por PÁGINA usando campos.nro_factura /
+    # campos.monto_retenido (esquema viejo, previo al array "detalle") —
+    # con un comprobante de varias facturas, esos campos vienen vacíos o
+    # solo reflejan la primera, y el resto se perdía en la exportación
+    # aunque la pantalla sí las mostraba todas (reportado en vivo, 08/09).
+    encabezados = [
+        "Página", "Archivo", "Motor", "Fecha", "Nro Comprobante", "Cliente", "RIF Cliente",
+        "Nº Factura", "Nº Control", "Nota Débito", "Nota Crédito", "Tipo Trans", "Doc. Afectado",
+        "Total C/IVA", "Total S/IVA", "Base Imponible", "% Alícuota", "Impuesto IVA", "IVA Retenido",
+    ]
     hoja.append(encabezados)
 
     for fila in resultados:
         campos = fila.get("campos", {})
-        hoja.append([
-            fila.get("pagina"),
-            fila.get("archivo"),
-            fila.get("motor"),
-            campos.get("fecha"),
-            campos.get("nro_comprobante"),
-            campos.get("cliente"),
-            campos.get("nro_factura"),
-            campos.get("rif_cliente"),
-            campos.get("monto_retenido"),
-        ])
+        cabecera = [
+            fila.get("pagina"), fila.get("archivo"), fila.get("motor"),
+            campos.get("fecha"), campos.get("nro_comprobante"), campos.get("cliente"), campos.get("rif_cliente"),
+        ]
+        detalle = campos.get("detalle") or [{}]  # sin detalle: una fila vacía, igual que filaDetalle(r, null, ...) en pantalla
+        for item in detalle:
+            hoja.append(cabecera + [
+                item.get("numero_factura"), item.get("numero_control"),
+                item.get("numero_nota_debito"), item.get("numero_nota_credito"),
+                item.get("tipo_trans"), item.get("documento_afectado"),
+                item.get("total_compras_con_iva"), item.get("total_compras_sin_iva"),
+                item.get("base_imponible"), item.get("porcentaje_alicuota"),
+                item.get("impuesto_iva"), item.get("iva_retenido"),
+            ])
 
     for indice, encabezado in enumerate(encabezados, start=1):
         hoja.column_dimensions[get_column_letter(indice)].width = max(14, len(encabezado) + 2)
@@ -383,14 +499,25 @@ def cargar_al_servidor():
 
     cargadas_ahora = 0
     for fila in filas_nuevas:
-        # Columnas: Fecha de registro, Archivo, Motor, Fecha, Nro Comprobante, Cliente, Nro Factura, RIF Cliente, Monto Retenido
-        _fecha_registro, _archivo, motor, fecha, nro_comprobante, cliente, nro_factura, rif_cliente, monto_retenido = fila
+        # Columnas: Fecha de registro, Archivo, Motor, Fecha, Nro Comprobante, Cliente, Nro Factura,
+        # RIF Cliente, Monto Retenido, Ref Documento (10ma, agregada 09/09 — filas viejas no la
+        # traen, de ahí fila_lista[9:10] en vez de desempaquetado fijo, que rompería con 9 o 10 valores).
+        fila_lista = list(fila)
+        _fecha_registro, _archivo, motor, fecha, nro_comprobante, cliente, nro_factura, rif_cliente, monto_retenido = fila_lista[:9]
+        ref_documento = fila_lista[9] if len(fila_lista) > 9 else None
         campos = {
             "fecha": fecha, "nro_comprobante": nro_comprobante, "cliente": cliente,
             "nro_factura": nro_factura, "rif_cliente": rif_cliente, "monto_retenido": monto_retenido,
         }
         try:
-            bd_ocr.guardar_retencion(motor, campos)
+            contenido_pdf = None
+            if ref_documento:
+                ruta_pdf = os.path.join(RUTA_DOCUMENTOS, ref_documento)
+                if os.path.exists(ruta_pdf):
+                    with open(ruta_pdf, "rb") as f:
+                        contenido_pdf = f.read()
+            documento_id = bd_ocr.obtener_o_guardar_documento_retencion(ref_documento, contenido_pdf) if ref_documento else None
+            bd_ocr.guardar_retencion(motor, campos, documento_id=documento_id)
             cargadas_ahora += 1
         except Exception as error:
             print(f"[bd_ocr] No se pudo cargar una fila del histórico: {error}")
@@ -494,6 +621,11 @@ def reiniciar_historico_detalle():
 
 
 if __name__ == "__main__":
+    from waitress import serve
+
     puerto = int(os.environ.get("PUERTO_RETENCIONES", 5030))
-    print(f"Escáner de retenciones IVA — modelo principal: {ocr.MODELO_VISION_DEEPSEEK} (DeepSeek), respaldo: {ocr.MODELO_VISION} (Gemini)")
-    app.run(host="0.0.0.0", port=puerto, debug=True, threaded=True, use_reloader=False)
+    print(f"Escáner de retenciones IVA — modelo principal: {ocr.MODELO_VISION_QWEN} (Qwen-VL local), respaldo: {ocr.MODELO_VISION_DEEPSEEK} (DeepSeek) -> {ocr.MODELO_VISION} (Gemini)")
+    # Waitress (servidor WSGI de producción) en vez del server de desarrollo
+    # de Flask — este panel lo usa más de una persona a la vez (04/09).
+    print(f"Sirviendo con Waitress en el puerto {puerto}…")
+    serve(app, host="0.0.0.0", port=puerto, threads=14)
