@@ -1369,16 +1369,21 @@ def pedidos_subir():
             "error": "No hay artículos con código confirmado contra el maestro — buscalos con la lupa antes de subir",
         }), 400
 
-    # Bloqueo de artículos repetidos (14/09, a pedido explícito del
-    # usuario, caso real: dos filas del mismo pedido con el MISMO código
-    # confirmado — el OCR duplicó un renglón sin que nadie lo notara y
-    # casi se sube dos veces el mismo artículo). Se compara por "codigo"
-    # (el confirmado contra el maestro, nunca el texto libre de
-    # "articulo") — nunca se auto-combinan las cantidades acá: sumarlas
-    # solo sería inventar un número, mejor que la persona misma decida y
-    # lo corrija a mano en la tabla. `items_validos` ya refleja lo que hay
-    # en pantalla AL MOMENTO de subir (incluida cualquier cantidad que el
-    # usuario haya corregido a mano), nunca la extracción original del OCR.
+    # Aviso de artículos repetidos (14/09, a pedido explícito del usuario
+    # — antes bloqueaba, ahora NO: "que si la deje subir... pero que
+    # genere la alerta primero... y guardamos esa alerta para tener
+    # respaldo"). Caso real: dos filas del mismo pedido con el MISMO
+    # código confirmado — el OCR duplicó un renglón sin que nadie lo
+    # notara. Se compara por "codigo" (el confirmado contra el maestro,
+    # nunca el texto libre de "articulo") — nunca se auto-combinan las
+    # cantidades acá: sumarlas solo sería inventar un número.
+    # `items_validos` ya refleja lo que hay en pantalla AL MOMENTO de
+    # subir (incluida cualquier cantidad que el usuario haya corregido a
+    # mano), nunca la extracción original del OCR. El frontend ya le dio
+    # al usuario la opción de montarlo así o de ir a corregir/eliminar la
+    # fila ANTES de llegar acá — este chequeo server-side es la fuente de
+    # verdad que queda grabada, no depende de que el aviso del navegador
+    # se haya visto o no.
     cantidades_por_codigo = {}
     articulo_por_codigo = {}
     for item in items_validos:
@@ -1386,17 +1391,10 @@ def pedidos_subir():
         cantidades_por_codigo.setdefault(codigo_norm, []).append(item.get("cantidad"))
         articulo_por_codigo.setdefault(codigo_norm, item.get("articulo") or codigo_norm)
     repetidos = {codigo: cants for codigo, cants in cantidades_por_codigo.items() if len(cants) > 1}
-    if repetidos:
-        detalle = "; ".join(
-            f"{articulo_por_codigo[codigo]} (aparece {len(cants)} veces, cantidades: {', '.join(str(c) for c in cants)})"
-            for codigo, cants in repetidos.items()
-        )
-        return jsonify({
-            "error": (
-                f"Este pedido tiene artículo(s) repetido(s) en más de una fila: {detalle}. "
-                "Quitá una de las filas repetidas o combiná la cantidad a mano en la tabla antes de subir."
-            ),
-        }), 400
+    aviso_articulos_repetidos = [
+        f"{articulo_por_codigo[codigo]} (aparece {len(cants)} veces, cantidades: {', '.join(str(c) for c in cants)})"
+        for codigo, cants in repetidos.items()
+    ]
 
     # Bloqueo de psicotrópicos (11/09, a pedido explícito del usuario):
     # Cristmedicals no puede montar estos pedidos por esta vía, ni
@@ -1541,13 +1539,18 @@ def pedidos_subir():
         pass  # cuerpo sin JSON válido: se queda como estaba (numero_cotizacion=None), sin forzar nada
 
     try:
-        # Marca "[DUPLICADO...]" al frente de la respuesta guardada (14/09)
-        # — para poder encontrar estos casos después con una simple
-        # búsqueda en pedidos_ocr.respuesta_endpoint, sin agregar columna.
-        respuesta_para_guardar = (
-            f"[DUPLICADO DETECTADO POR CRISTMEDICALS — cotización reutilizada, no creada] {cuerpo_respuesta}"
-            if duplicado else cuerpo_respuesta
-        )
+        # Marcas al frente de la respuesta guardada (14/09) — para poder
+        # encontrar estos casos después con una simple búsqueda en
+        # pedidos_ocr.respuesta_endpoint, sin agregar columna. Esto es el
+        # "respaldo" del aviso de artículos repetidos que pidió el
+        # usuario: aunque no bloquea la subida, queda grabado quién y qué
+        # pedido tuvo un artículo repetido, para auditar después.
+        marcas = []
+        if duplicado:
+            marcas.append("[DUPLICADO DETECTADO POR CRISTMEDICALS — cotización reutilizada, no creada]")
+        if aviso_articulos_repetidos:
+            marcas.append(f"[ARTÍCULO(S) REPETIDO(S), SUBIDO IGUAL: {'; '.join(aviso_articulos_repetidos)}]")
+        respuesta_para_guardar = (f"{' '.join(marcas)} {cuerpo_respuesta}") if marcas else cuerpo_respuesta
         bd_ocr.actualizar_estado_pedido_ocr(
             pedido_id, "enviado" if exito else "error", respuesta_para_guardar, numero_cotizacion,
         )
@@ -1591,6 +1594,7 @@ def pedidos_subir():
     return jsonify({
         "ok": True, "cod_pedido": pedido_id, "numero_cotizacion": numero_cotizacion,
         "respuesta": cuerpo_respuesta, "omitidos": items_sin_precio, "duplicado": duplicado,
+        "articulos_repetidos": aviso_articulos_repetidos,
     })
 
 

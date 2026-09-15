@@ -1135,17 +1135,22 @@ function actualizarAvisoPsicotropico(pagina) {
       fila.classList.toggle("fila-item-repetida", indicesRepetidos.has(Number(fila.dataset.indice)));
     });
   }
+  // 15/09, a pedido explícito del usuario: esto YA NO bloquea "Montar
+  // pedido" (antes sí) — solo avisa. El artículo repetido puede subirse
+  // igual si la persona confirma que quiere hacerlo así (ver el
+  // confirm() en el click de "Montar pedido" y en subirPedidoPorLote);
+  // el aviso de acá es para que lo vea ANTES de decidir.
   if (indicesRepetidos.size) {
     const nombres = [...new Set([...indicesRepetidos].map((i) => items[i].articulo || items[i].codigo))];
     avisoRepetido.style.display = "flex";
-    avisoRepetido.innerHTML = `<i data-lucide="copy-x"></i> <span>Hay artículo(s) repetido(s) en más de una fila (${nombres.map(escHtml).join(", ")}) — quitá una de las filas o combiná la cantidad a mano antes de montar el pedido.</span>`;
+    avisoRepetido.innerHTML = `<i data-lucide="copy-x"></i> <span>Hay artículo(s) repetido(s) en más de una fila (${nombres.map(escHtml).join(", ")}) — se puede montar igual, pero revisá si conviene quitar una fila o combinar la cantidad a mano primero.</span>`;
   } else {
     avisoRepetido.style.display = "none";
     avisoRepetido.innerHTML = "";
   }
 
   const botonMontar = tarjeta.querySelector(".boton-montar-pedido");
-  if (botonMontar) botonMontar.disabled = encontrados.length > 0 || indicesRepetidos.size > 0;
+  if (botonMontar) botonMontar.disabled = encontrados.length > 0;
   refrescarIconos();
 }
 
@@ -1222,6 +1227,22 @@ function avisoDuplicado(datos) {
   if (!datos.duplicado) return "";
   return `<div class="aviso-duplicado"><i data-lucide="alert-triangle"></i>
     Cristmedicals reportó este pedido como DUPLICADO de uno anterior y devolvió esa cotización en vez de crear una nueva — verificá a mano contra el pedido original antes de confirmarle algo al cliente.
+  </div>`;
+}
+
+// Aviso de artículo(s) repetido(s) que se subieron igual (15/09, a
+// pedido explícito del usuario: ya no bloquea, pero queda visible en el
+// resultado y grabado en pedidos_ocr.respuesta_endpoint como respaldo —
+// ver pedidos_subir). Se confirmó antes de subir (ver el confirm() en el
+// click de "Montar pedido"/"Subir por lote"), esto es solo la constancia
+// de que quedó así.
+function avisoArticulosRepetidos(datos) {
+  if (!datos.articulos_repetidos || !datos.articulos_repetidos.length) return "";
+  const items = datos.articulos_repetidos.map((a) => `<li>${escHtml(a)}</li>`).join("");
+  return `<div class="aviso-duplicado"><i data-lucide="copy-x"></i>
+    <span>Se subió con artículo(s) repetido(s), tal como se confirmó — queda registrado:
+      <ul style="margin:4px 0 0; padding-left:18px;">${items}</ul>
+    </span>
   </div>`;
 }
 
@@ -1553,9 +1574,17 @@ function activarTarjeta(pagina) {
         alert(`Este pedido contiene psicotrópicos (${encontrados.map((i) => i.articulo).join(", ")}). Por favor procese con el departamento correspondiente — no se puede montar por acá.`);
         return;
       }
+      // 15/09, a pedido explícito del usuario: esto ya NO bloquea — se
+      // le da a elegir entre montarlo así o volver a corregir/eliminar
+      // la fila repetida. Si confirma, se monta igual (el server graba
+      // el aviso como respaldo, ver pedidos_subir).
       if (itemsConCodigoRepetido(items).size) {
-        alert("Hay un artículo repetido en más de una fila de este pedido — quitá una de las filas o combiná la cantidad a mano antes de montar el pedido.");
-        return;
+        const seguir = confirm(
+          "Este pedido tiene un artículo repetido en más de una fila.\n\n" +
+          "Aceptar: montarlo igual así (queda registrado el aviso).\n" +
+          "Cancelar: volver para modificar la cantidad o eliminar la fila repetida."
+        );
+        if (!seguir) return;
       }
       abrirModalMontar(pagina);
     });
@@ -1980,7 +2009,7 @@ async function subirPedido(pagina) {
     const cotizacionTexto = datos.numero_cotizacion
       ? `<b>${formatearCotizaciones(datos.numero_cotizacion)}</b>`
       : `Pedido subido — cod_pedido ${datos.cod_pedido} (todavía sin número de cotización en la respuesta)`;
-    salida.innerHTML = `${cotizacionTexto}${omitidos}${avisoDuplicado(datos)}`;
+    salida.innerHTML = `${cotizacionTexto}${omitidos}${avisoDuplicado(datos)}${avisoArticulosRepetidos(datos)}`;
     refrescarIconos();
     // La tarjeta con la tabla de artículos ya no tiene sentido en pantalla
     // una vez subido con éxito (11/09, a pedido explícito del usuario:
@@ -2095,12 +2124,16 @@ async function subirPedidoPorLote(coCli) {
   const itemsCombinados = grupo.resultados.flatMap((r) => r.campos.items || []);
   // 14/09: al combinar varias notas del mismo cliente en un solo pedido,
   // el mismo artículo puede aparecer en DOS notas distintas — acá recién
-  // se nota, ninguna tarjeta individual lo hubiera detectado sola. Mismo
-  // bloqueo que en "Montar pedido" (el servidor lo vuelve a chequear
-  // igual, esto es solo para avisar antes de la llamada de red).
+  // se nota, ninguna tarjeta individual lo hubiera detectado sola.
+  // 15/09, a pedido explícito del usuario: ya NO bloquea — se da a
+  // elegir entre subirlo igual o cancelar para corregir a mano.
   if (itemsConCodigoRepetido(itemsCombinados).size) {
-    alert("Al combinar estas notas queda un artículo repetido en más de una fila — corregilo a mano (quitá una fila o combiná la cantidad) en la nota correspondiente antes de subir el lote.");
-    return;
+    const seguir = confirm(
+      "Al combinar estas notas queda un artículo repetido en más de una fila.\n\n" +
+      "Aceptar: subir el lote igual así (queda registrado el aviso).\n" +
+      "Cancelar: volver para corregir la cantidad o eliminar la fila repetida en la nota correspondiente."
+    );
+    if (!seguir) return;
   }
 
   boton.disabled = true;
@@ -2136,7 +2169,7 @@ async function subirPedidoPorLote(coCli) {
       ? formatearCotizaciones(datos.numero_cotizacion)
       : `Pedido subido — cod_pedido ${datos.cod_pedido} (todavía sin número de cotización en la respuesta)`;
     salida.className = "resultado-lote exito";
-    salida.innerHTML = `<b>${grupo.resultados.length} notas combinadas.</b> ${cotizacionTexto}${omitidos}${avisoDuplicado(datos)}`;
+    salida.innerHTML = `<b>${grupo.resultados.length} notas combinadas.</b> ${cotizacionTexto}${omitidos}${avisoDuplicado(datos)}${avisoArticulosRepetidos(datos)}`;
     refrescarIconos();
     actualizarContadorHistorico();
     actualizarHistorialPedidos();
