@@ -59,6 +59,13 @@
     transition: background 0.15s ease;
   }
   #enlace-historico:hover { background: rgba(255,255,255,0.28); }
+  #bloque-sesion { font-size: 12.5px; display: flex; align-items: center; gap: 8px; }
+  #bloque-sesion a, #bloque-sesion .usuario-activo {
+    color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(255,255,255,0.16); border-radius: 999px; padding: 5px 12px; transition: background 0.15s ease;
+  }
+  #bloque-sesion a:hover { background: rgba(255,255,255,0.28); }
+  #bloque-sesion i { width: 13px; height: 13px; }
   #enlace-historico i { width: 14px; height: 14px; }
   #boton-reiniciar-historico {
     display: inline-flex;
@@ -78,27 +85,27 @@
   #punto-ocr { width: 8px; height: 8px; border-radius: 50%; background: #ffb3b0; }
   #punto-ocr.ok { background: #b6f0a1; }
 
-  main { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+  main { max-width: 1300px; margin: 0 auto; padding: 12px 24px 60px; }
 
   .panel {
     background: var(--panel);
     border: 1px solid var(--borde);
     border-radius: 12px;
-    padding: 18px;
-    margin-bottom: 18px;
+    padding: 14px;
+    margin-bottom: 14px;
   }
 
   #zona-carga {
     border: 2px dashed var(--borde);
     border-radius: 12px;
-    padding: 36px 30px;
+    padding: 14px 30px;
     text-align: center;
     color: var(--texto-tenue);
     cursor: pointer;
     transition: border-color 0.15s ease, background 0.15s ease;
   }
   #zona-carga.arrastrando { border-color: var(--acento); background: var(--acento-clara); }
-  #zona-carga svg { width: 36px; height: 36px; margin-bottom: 8px; opacity: 0.55; color: var(--acento-oscuro); }
+  #zona-carga svg { width: 28px; height: 28px; margin-bottom: 4px; opacity: 0.55; color: var(--acento-oscuro); }
   #entrada-archivo { display: none; }
 
   button {
@@ -194,8 +201,6 @@
   .input-item:hover, .input-item:focus { border-color: var(--borde); background: var(--panel-alt); outline: none; }
   .input-item.vacio-articulo::placeholder { color: var(--negativa); }
   .input-cantidad { width: 90px; }
-  .celda-pediatrico { text-align: center; }
-  .celda-pediatrico input { width: 16px; height: 16px; cursor: pointer; }
   .boton-quitar-item {
     background: none; border: none; padding: 4px; cursor: pointer; color: var(--texto-tenue); display: inline-flex;
   }
@@ -208,6 +213,405 @@
   .boton-agregar-item:hover { background: var(--acento-clara); filter: none; }
   .sin-items { font-size: 12px; color: var(--texto-tenue); padding: 10px 4px; font-style: italic; }
   .archivo-origen { font-size: 11px; color: var(--texto-tenue); margin-top: 10px; }
+
+  /* ---------- Código (maestro de ARA_PROYECT) + lupa por artículo ---------- */
+  .celda-articulo { display: flex; align-items: center; gap: 4px; }
+  .celda-articulo .input-item { flex: 1; min-width: 0; }
+  .boton-lupa-producto {
+    background: none; border: none; padding: 4px; cursor: pointer; color: var(--acento-oscuro);
+    display: inline-flex; flex-shrink: 0; border-radius: 6px;
+  }
+  .boton-lupa-producto:hover { background: var(--acento-clara); }
+  .boton-lupa-producto i { width: 14px; height: 14px; }
+  .input-codigo { width: 90px; font-family: Consolas, monospace; }
+  .input-codigo.sin-codigo::placeholder { color: var(--negativa); }
+  /* Fila con el mismo código repetido en otra fila de la misma tabla
+     (14/09, a pedido explícito del usuario) — bloquea "Montar pedido"
+     hasta que se quite una de las dos o se combine la cantidad a mano. */
+  tr.fila-item-repetida td { background: rgba(224,64,62,0.08); }
+  tr.fila-item-repetida .input-codigo { color: var(--negativa); font-weight: 600; }
+
+  /* Modal de búsqueda de artículo (10/09, antes un desplegable pegado a la
+     lupa — ahora centrado con fondo desenfocado, mismo patrón que "Montar
+     pedido", para que la lista de coincidencias se vea grande y clara). */
+  .modal-busqueda-producto {
+    position: relative; background: var(--panel-alt); border-radius: 14px; padding: 20px;
+    width: 100%; max-width: 940px; max-height: 85vh; display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(20,14,45,0.35); animation: aparecerModal 0.18s ease;
+  }
+  .bloque-busqueda-producto {
+    display: flex; align-items: center; gap: 8px; background: white; border-radius: 8px;
+    padding: 6px 10px; margin: 6px 0 12px; flex-shrink: 0;
+  }
+  .bloque-busqueda-producto > i { width: 15px; height: 15px; color: var(--texto-tenue); flex-shrink: 0; }
+  .input-buscar-producto {
+    flex: 1; border: 1px solid var(--borde); background: white; border-radius: 6px; padding: 8px 10px;
+    font-size: 13.5px; font-family: "Segoe UI", system-ui, sans-serif; color: var(--texto);
+  }
+  .input-buscar-producto:focus { outline: 1px solid var(--acento); }
+  /* Aclaración de precio (14/09) — "sin misterio": el precio de la lupa
+     ya trae el descuento del cliente, pero Profit puede sumar otro al
+     facturar según la forma de pago (tasa BCV), algo que no se sabe de
+     antemano acá. */
+  .aviso-precio-referencia {
+    display: flex; align-items: flex-start; gap: 8px; background: var(--acento-clara);
+    color: var(--acento-oscuro); border-radius: 8px; padding: 7px 10px; margin: -4px 0 10px;
+    font-size: 11.5px; flex-shrink: 0;
+  }
+  .aviso-precio-referencia i { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; }
+  /* Franja con el listado + la foto del producto (11/09, a pedido
+     explícito del usuario: mismo origen de imagen que el Visor de
+     Artículos de ARA_PROYECT — CDN por código, sin endpoint nuevo).
+     Se muestra SOLO al pasar el cursor por una tarjeta, nunca al
+     hacer clic. */
+  .busqueda-producto-split { display: flex; gap: 12px; flex: 1; min-height: 320px; overflow: hidden; }
+  .busqueda-producto-split .resultados-producto { flex: 1; }
+  .preview-imagen-producto {
+    width: 340px; flex-shrink: 0; background: white; border: 1px solid var(--borde); border-radius: 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; padding: 10px; gap: 8px;
+  }
+  .preview-imagen-producto img { max-width: 100%; max-height: 100%; flex: 1; min-height: 0; object-fit: contain; }
+  .preview-imagen-producto .sin-imagen { font-size: 11.5px; color: var(--texto-tenue); text-align: center; padding: 0 12px; }
+  .preview-imagen-descripcion {
+    flex-shrink: 0; font-size: 11.5px; color: var(--texto); text-align: center; line-height: 1.4;
+    padding: 0 4px; font-weight: 600;
+  }
+  .preview-imagen-producto .boton-descargar-imagen {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+    padding: 7px 14px; border-radius: 8px; background: var(--acento); color: white; text-decoration: none;
+  }
+  .preview-imagen-producto .boton-descargar-imagen:hover { background: var(--acento-oscuro); }
+  .preview-imagen-producto .boton-descargar-imagen i { width: 14px; height: 14px; }
+  .resultados-producto {
+    background: white; border: 1px solid var(--borde); border-radius: 8px;
+    overflow-y: auto; flex: 1; min-height: 120px;
+  }
+  .item-producto { padding: 7px 10px; cursor: pointer; border-bottom: 1px solid var(--panel-alt); display: flex; align-items: center; gap: 8px; }
+  .item-producto:last-child { border-bottom: none; }
+  .item-producto:hover { background: var(--acento-clara); }
+  .item-producto .texto-producto { flex: 1; min-width: 0; }
+  .item-producto .nombre-prod { font-size: 12px; font-weight: 600; color: var(--texto); }
+  .item-producto .detalle-prod { font-size: 10.5px; color: var(--texto-tenue); font-family: Consolas, monospace; }
+  .item-producto.sin-resultados { cursor: default; color: var(--texto-tenue); font-size: 12px; font-family: "Segoe UI", system-ui, sans-serif; }
+  .item-producto.sin-resultados:hover { background: none; }
+  /* Sin stock: se marca en rojo — el artículo existe en el maestro pero
+     hoy no hay unidades, así que conviene que salte a la vista antes de
+     montarlo en un pedido. */
+  .item-producto.sin-stock .nombre-prod { color: var(--negativa); }
+  .item-producto.sin-stock .detalle-prod { color: var(--negativa); }
+  .badge-coincidencia { font-size: 10.5px; font-weight: 700; flex-shrink: 0; font-family: Consolas, monospace; }
+  .boton-generar-alerta {
+    background: none; border: none; padding: 4px; cursor: pointer; color: var(--texto-tenue);
+    display: inline-flex; flex-shrink: 0; border-radius: 6px;
+  }
+  .boton-generar-alerta:hover { background: var(--acento-clara); color: var(--negativa); }
+  .boton-generar-alerta i { width: 14px; height: 14px; }
+
+  .input-comentario {
+    width: 100%; border: 1px solid var(--borde); background: white; border-radius: 8px;
+    padding: 8px 12px; font-size: 13px; font-family: "Segoe UI", system-ui, sans-serif;
+    color: var(--texto); resize: vertical; line-height: 1.4;
+  }
+  .input-comentario:focus { outline: 1px solid var(--acento); }
+  .input-comentario::placeholder { color: var(--texto-tenue); }
+
+  /* ---------- Montar pedido: modal centrado con fondo desenfocado ---------- */
+  .bloque-cliente-tarjeta { margin-bottom: 2px; }
+  .bloque-montar-pedido { margin-bottom: 12px; display: flex; gap: 8px; }
+  .boton-montar-pedido { font-size: 12.5px; padding: 7px 14px; }
+  .overlay-modal {
+    position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+    background: rgba(26,21,51,0.45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    padding: 24px; animation: aparecerFondo 0.15s ease;
+  }
+  @keyframes aparecerFondo { from { opacity: 0; } to { opacity: 1; } }
+  .modal-montar-pedido {
+    position: relative; background: var(--panel-alt); border-radius: 14px; padding: 20px;
+    width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(20,14,45,0.35); animation: aparecerModal 0.18s ease;
+  }
+  @keyframes aparecerModal { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  .boton-cerrar-modal {
+    position: absolute; top: 12px; right: 12px; background: none; border: none; padding: 6px;
+    cursor: pointer; color: var(--texto-tenue); border-radius: 999px;
+  }
+  .boton-cerrar-modal:hover { background: var(--borde); color: var(--texto); }
+  .boton-cerrar-modal i { width: 16px; height: 16px; }
+  .preview-pedido { background: white; border: 1px solid var(--borde); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  .preview-titulo { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texto-tenue); margin-bottom: 6px; font-weight: 600; }
+  .preview-sede { font-size: 12.5px; margin-bottom: 8px; }
+  .preview-items { margin: 0 0 8px; padding: 0; list-style: none; font-size: 12.5px; }
+  .preview-items li {
+    display: flex; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--panel-alt);
+  }
+  .preview-items li:last-child { border-bottom: none; }
+  .preview-codigo { color: var(--acento-oscuro); font-family: Consolas, monospace; font-size: 11px; flex-shrink: 0; width: 62px; }
+  .preview-descripcion { flex: 1; min-width: 0; }
+  .preview-cantidad { color: var(--texto-tenue); font-weight: 600; flex-shrink: 0; }
+  .preview-vacio { color: var(--texto-tenue); font-style: italic; }
+  .preview-aviso { font-size: 11.5px; color: var(--negativa); background: rgba(224,64,62,0.08); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; }
+  .boton-siguiente-pendiente { width: 100%; justify-content: center; margin-top: 8px; }
+
+  .bloque-cliente-pedido { position: relative; margin-bottom: 10px; }
+  .input-buscar-cliente {
+    width: 100%; border: 1px solid var(--borde); background: var(--panel-alt); border-radius: 6px;
+    padding: 8px 10px; font-size: 12.5px; font-family: "Segoe UI", system-ui, sans-serif; color: var(--texto);
+  }
+  .input-buscar-cliente:focus { outline: 1px solid var(--acento); }
+  .resultados-cliente {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 5; margin-top: 4px;
+    background: white; border: 1px solid var(--borde); border-radius: 8px; max-height: 220px;
+    overflow-y: auto; box-shadow: 0 6px 18px rgba(30,20,60,0.14);
+  }
+  .item-cliente { padding: 7px 10px; cursor: pointer; border-bottom: 1px solid var(--panel-alt); font-size: 12px; }
+  .item-cliente:last-child { border-bottom: none; }
+  .item-cliente:hover { background: var(--acento-clara); }
+  .item-cliente .codigo-cliente { color: var(--texto-tenue); font-family: Consolas, monospace; font-size: 10.5px; }
+  .item-cliente.sin-resultados { cursor: default; color: var(--texto-tenue); }
+  .item-cliente.sin-resultados:hover { background: none; }
+  .cliente-elegido {
+    display: flex; align-items: center; gap: 6px; font-size: 12.5px; background: rgba(31,168,85,0.08);
+    border: 1px solid rgba(31,168,85,0.3); border-radius: 6px; padding: 8px 10px;
+  }
+  .cliente-elegido i { width: 14px; height: 14px; color: var(--positiva); flex-shrink: 0; }
+  .cliente-codigo { color: var(--texto-tenue); font-family: Consolas, monospace; font-size: 11px; }
+  .descuento-cliente {
+    font-size: 11px; font-weight: 600; color: var(--acento-oscuro); background: var(--acento-clara);
+    border-radius: 999px; padding: 2px 8px; white-space: nowrap;
+  }
+  .descuento-cliente.sin-descuento { color: var(--texto-tenue); background: var(--panel-alt); font-weight: 400; }
+  .boton-cambiar-cliente {
+    margin-left: auto; background: none; border: none; color: var(--acento-oscuro); font-size: 11.5px;
+    text-decoration: underline; padding: 0; cursor: pointer;
+  }
+  .boton-subir-pedido { width: 100%; justify-content: center; background: var(--positiva); font-size: 13px; }
+  .resultado-subida { margin-top: 8px; font-size: 12px; }
+  .resultado-subida.exito { color: var(--positiva); }
+  .resultado-subida.error { color: var(--negativa); }
+
+  /* ---------- Modo múltiple ---------- */
+  .banner-multi {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: var(--acento-clara);
+    border: 1px solid var(--borde); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 12.5px;
+  }
+  /* .resultado-lote (vacío hasta que se sube por lote) tiene
+     flex-basis:100% para pasar a su propia línea DEBAJO del texto+botón
+     — sin flex-wrap en el contenedor, el navegador intentaba meterlo en
+     la MISMA fila y aplastaba todo lo demás a una columna angosta (bug
+     real reportado en vivo, 11/09). */
+  .banner-multi .texto-multi { min-width: 200px; }
+  .banner-multi i { color: var(--acento-oscuro); flex-shrink: 0; }
+  .banner-multi .texto-multi { flex: 1; }
+  .banner-multi button { font-size: 12px; padding: 6px 12px; }
+  .banner-multi.lote { background: rgba(31,168,85,0.08); border-color: rgba(31,168,85,0.3); margin-bottom: 8px; }
+  .banner-multi.lote i { color: var(--positiva); }
+  .banner-multi.lote button { background: var(--positiva); }
+  .banner-multi.lote .input-comentario-lote { flex-basis: 100%; margin-top: 4px; font-size: 12.5px; }
+  .banner-multi.lote .resultado-lote { flex-basis: 100%; font-size: 12px; margin-top: 4px; }
+  .banner-multi.lote .resultado-lote.error { color: var(--negativa); }
+  .banner-multi.lote .resultado-lote.exito { color: var(--positiva); }
+
+  /* ---------- Historial de cotizaciones creadas ---------- */
+  #boton-ver-historial {
+    font-size: 12.5px; padding: 5px 12px; background: rgba(255,255,255,0.16); color: white; border-radius: 999px;
+  }
+  #boton-ver-historial:hover { background: rgba(255,255,255,0.28); filter: none; }
+  #panel-historial { display: none; }
+
+  /* ---------- Cotizaciones en espera ---------- */
+  #boton-ver-espera {
+    font-size: 12.5px; padding: 5px 12px; background: rgba(255,255,255,0.16); color: white; border-radius: 999px;
+  }
+  #boton-ver-espera:hover { background: rgba(255,255,255,0.28); filter: none; }
+  #panel-espera { display: none; }
+  .boton-dejar-espera { font-size: 12.5px; }
+
+  .panel-historial-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+    background: linear-gradient(135deg, var(--acento-oscuro), var(--acento));
+    color: white; border-radius: 10px; padding: 14px 18px; font-size: 14px; font-weight: 600;
+    box-shadow: 0 2px 8px rgba(91,63,214,0.25);
+  }
+  .panel-historial-header i { width: 18px; height: 18px; }
+  .panel-historial-header .contador-resultados {
+    color: rgba(255,255,255,0.85); margin-left: auto; font-size: 12.5px; font-weight: 400;
+  }
+
+  .stats-historial {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px;
+  }
+  .stat-card {
+    background: var(--panel-alt); border: 1px solid var(--borde); border-radius: 10px; padding: 12px 14px;
+    display: flex; align-items: center; gap: 10px; transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(91,63,214,0.12); }
+  .stat-icon {
+    width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .stat-icon i { width: 16px; height: 16px; }
+  .stat-icon.total { background: var(--acento-clara); color: var(--acento-oscuro); }
+  .stat-icon.enviados { background: rgba(31,168,85,0.1); color: var(--positiva); }
+  .stat-icon.errores { background: rgba(224,64,62,0.1); color: var(--negativa); }
+  .stat-data { display: flex; flex-direction: column; }
+  .stat-valor { font-size: 20px; font-weight: 700; line-height: 1.2; color: var(--texto); }
+  .stat-label { font-size: 10.5px; color: var(--texto-tenue); text-transform: uppercase; letter-spacing: 0.03em; }
+
+  .filtros-historial {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .filtros-historial label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texto-tenue); font-weight: 600;
+  }
+  .input-fecha-filtro {
+    background: var(--panel-alt); border: 1px solid var(--borde); border-radius: 6px;
+    padding: 7px 10px; font-size: 12.5px; font-family: "Segoe UI", system-ui, sans-serif; color: var(--texto);
+    transition: border-color 0.15s ease;
+  }
+  .input-fecha-filtro:focus { outline: none; border-color: var(--acento); }
+  .input-fecha-filtro::-webkit-calendar-picker-indicator {
+    filter: invert(0.5) sepia(1) saturate(0.5) hue-rotate(200deg);
+    cursor: pointer;
+  }
+  .boton-limpiar-filtro {
+    background: none; border: 1px solid var(--borde); border-radius: 6px; padding: 5px 12px;
+    font-size: 11px; color: var(--texto-tenue); cursor: pointer; transition: all 0.15s ease;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .boton-limpiar-filtro:hover { border-color: var(--acento); color: var(--acento-oscuro); }
+  .boton-limpiar-filtro i { width: 12px; height: 12px; }
+  .resultado-filtro { font-size: 11px; color: var(--texto-tenue); margin-left: auto; }
+  /* Selector de ejecutivo (14/09) — mismo look que el input de fecha de
+     al lado. Se repuebla cada vez que cambia el rango de fechas, con
+     SOLO los nombres que subieron algo ESE rango (ver
+     cargarEjecutivosHistorial) — nunca una lista fija de todo el mundo. */
+  .select-ejecutivo-filtro {
+    background: var(--panel-alt); border: 1px solid var(--borde); border-radius: 6px;
+    padding: 7px 10px; font-size: 12.5px; font-family: "Segoe UI", system-ui, sans-serif; color: var(--texto);
+    max-width: 200px;
+  }
+  .select-ejecutivo-filtro:focus { outline: none; border-color: var(--acento); }
+
+  .panel-historial-body { overflow-x: auto; border-radius: 10px; border: 1px solid var(--borde); }
+  /* Visor de PDF/imagen inline en "Ver historial" (10/09) — reubicado
+     acá desde donde lo había puesto OpenCode por error (una pestaña
+     "Pedidos" dentro de OCR-PS); acá sí corresponde, es 100% Pedidos OCR. */
+  .historial-split { display: flex; gap: 14px; align-items: flex-start; }
+  .historial-split .panel-historial-body { flex: 1; min-width: 0; }
+  .historial-preview {
+    flex: 0 0 380px; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden;
+    background: white; display: flex; flex-direction: column; height: 500px;
+  }
+  .historial-preview-toolbar {
+    display: flex; align-items: center; justify-content: space-between; padding: 8px 10px;
+    background: var(--panel-alt); font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+  .historial-preview-toolbar button { background: none; border: none; padding: 4px; cursor: pointer; color: var(--texto-tenue); border-radius: 999px; }
+  .historial-preview-toolbar button:hover { background: var(--borde); color: var(--negativa); }
+  #iframe-preview-historial { flex: 1; border: none; width: 100%; background: white; }
+  .cotiz-num-boton { background: none; border: none; padding: 0; cursor: pointer; font: inherit; }
+  .cotiz-num-boton:hover { text-decoration: underline; }
+  .celda-entrega { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .aviso-psicotropico {
+    display: flex; align-items: flex-start; gap: 8px; background: rgba(224,64,62,0.1);
+    border: 1px solid var(--negativa); color: var(--negativa); border-radius: 8px;
+    padding: 8px 10px; font-size: 12px; font-weight: 600; margin-bottom: 10px;
+  }
+  .aviso-psicotropico i { flex-shrink: 0; width: 15px; height: 15px; margin-top: 1px; }
+  /* Pedido reportado como "duplicado" por el endpoint externo de
+     Cristmedicals (14/09, caso real: cotización #134263 vieja devuelta en
+     vez de crear una nueva) — ámbar, no rojo: no es un bloqueo, es "verificá
+     esto a mano antes de confirmarle algo al cliente". */
+  .aviso-duplicado {
+    display: flex; align-items: flex-start; gap: 8px; background: rgba(180,83,9,0.1);
+    border: 1px solid #b45309; color: #b45309; border-radius: 8px;
+    padding: 8px 10px; font-size: 12px; font-weight: 600; margin-top: 6px;
+  }
+  .aviso-duplicado i { flex-shrink: 0; width: 15px; height: 15px; margin-top: 1px; }
+  .texto-transcripcion-ambigua {
+    font-size: 12px; font-style: italic; color: var(--texto-tenue); background: var(--panel-alt);
+    border-radius: 8px; padding: 8px 10px; margin: 8px 0; white-space: pre-wrap;
+  }
+  .boton-procesar-manual-ambiguo { width: 100%; justify-content: center; }
+  /* Audio ambiguo pasado a manual (12/09): transcripción AL LADO de la
+     tabla, para copiar a mano — no se pierde al pasar a modo manual. */
+  .fila-audio-manual { display: flex; gap: 14px; align-items: flex-start; }
+  .panel-transcripcion-audio {
+    flex: 0 0 260px; background: var(--panel-alt); border: 1px solid var(--borde); border-radius: 8px;
+    padding: 10px; max-height: 420px; overflow-y: auto; align-self: stretch;
+  }
+  .panel-transcripcion-audio-titulo {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texto-tenue);
+    font-weight: 600; margin-bottom: 6px;
+  }
+  .panel-transcripcion-audio-texto {
+    font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; user-select: text; color: var(--texto);
+  }
+  .panel-manual-audio { flex: 1; min-width: 0; }
+  .boton-doc-original {
+    background: none; border: none; padding: 2px; cursor: pointer; color: var(--texto-tenue);
+    display: inline-flex; border-radius: 6px; flex-shrink: 0;
+  }
+  .boton-doc-original:hover { background: var(--acento-clara); color: var(--acento-oscuro); }
+
+  .tabla-historial {
+    width: 100%; border-collapse: collapse; font-size: 12.5px; background: var(--panel);
+  }
+  .tabla-historial thead { background: var(--panel-alt); }
+  .tabla-historial thead th {
+    text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600;
+    color: var(--texto-tenue); padding: 10px 12px; border-bottom: 2px solid var(--borde); white-space: nowrap;
+  }
+  .tabla-historial tbody tr {
+    border-bottom: 1px solid var(--panel-alt); transition: background 0.12s ease;
+  }
+  .tabla-historial tbody tr:last-child { border-bottom: none; }
+  .tabla-historial tbody tr:hover { background: var(--acento-clara); }
+  .tabla-historial td {
+    padding: 10px 12px; vertical-align: middle; white-space: nowrap;
+  }
+  .tabla-historial td:first-child { white-space: normal; min-width: 130px; }
+
+  .col-fecha { color: var(--texto-tenue); font-size: 11.5px; }
+  .col-cliente { display: flex; align-items: center; gap: 6px; }
+  .col-cliente strong { color: var(--texto); font-weight: 600; }
+
+  .cotiz-num { font-weight: 700; color: var(--acento-oscuro); font-family: Consolas, monospace; }
+  .cotiz-num.sin-numero { color: var(--texto-tenue); font-weight: 400; font-style: italic; font-family: "Segoe UI", system-ui, sans-serif; }
+  a.cotiz-num { text-decoration: none; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
+  a.cotiz-num:hover { text-decoration: underline; }
+
+  .estado-pedido {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; padding: 3px 10px;
+    border-radius: 999px; font-weight: 600; white-space: nowrap;
+  }
+  .estado-pedido i { width: 10px; height: 10px; }
+  .estado-pedido.enviado { background: rgba(31,168,85,0.12); color: var(--positiva); }
+  .estado-pedido.enviado i { color: var(--positiva); }
+  .estado-pedido.error { background: rgba(224,64,62,0.12); color: var(--negativa); }
+  .estado-pedido.error i { color: var(--negativa); }
+  .estado-pedido.pendiente { background: var(--acento-clara); color: var(--acento-oscuro); }
+  .estado-pedido.pendiente i { color: var(--acento-oscuro); }
+  /* Pedido anulado a mano (14/09) — ej. pruebas que llegaron a crear una
+     cotización real por error y hay que dejar marcadas como inválidas en
+     el historial, sin borrar el registro. Gris, no rojo: no es un fallo
+     del sistema, es una anulación deliberada. */
+  .estado-pedido.anulado { background: rgba(111,102,144,0.12); color: var(--texto-tenue); }
+  .estado-pedido.anulado i { color: var(--texto-tenue); }
+
+  .col-usuario { color: var(--texto-tenue); font-size: 11px; font-style: italic; }
+  .col-usuario .sin-sesion { color: var(--negativa); font-style: normal; }
+
+  .empty-historial {
+    text-align: center; padding: 40px 20px; color: var(--texto-tenue);
+  }
+  .empty-historial i { width: 40px; height: 40px; margin-bottom: 8px; opacity: 0.4; }
+  .empty-historial p { font-size: 13px; margin: 0; }
+
+  @keyframes aparecer {
+    from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .panel-historial-body { animation: aparecer 0.25s ease; }
 </style>
 </head>
 <body>
@@ -217,30 +621,128 @@
   <div style="display:flex; align-items:center; gap:14px;">
     <a class="enlace-modulo" href="/"><i data-lucide="pill"></i> OCR-PS</a>
     <a class="enlace-modulo" href="/menu"><i data-lucide="layout-grid"></i> Otros módulos</a>
-    <a href="/api/pedidos/historico/descargar" id="enlace-historico" title="Descarga el Excel con todos los artículos guardados hasta ahora">
-      <i data-lucide="database"></i> Histórico: <span id="texto-historico">—</span>
-    </a>
-    <button id="boton-reiniciar-historico" title="Elimina el progreso acumulado del Excel histórico (queda un respaldo con fecha)">
-      <i data-lucide="trash-2"></i>
-    </button>
+    <span id="enlace-historico" title="Pedidos subidos con éxito al endpoint de creación de pedidos (guardados en la base, ya no en Excel)">
+      <i data-lucide="database"></i> Pedidos subidos: <span id="texto-historico">—</span>
+    </span>
+    <button type="button" id="boton-ver-historial"><i data-lucide="history"></i> Ver historial</button>
+    <button type="button" id="boton-ver-espera"><i data-lucide="pause-circle"></i> En espera <span id="contador-espera-header"></span></button>
     <div id="estado-ocr">
       <span id="punto-ocr"></span>
       <span id="texto-estado-ocr">verificando API de OCR…</span>
     </div>
+    <span id="bloque-sesion"></span>
   </div>
 </header>
 
 <main>
-  <div class="panel">
+  <div class="panel" id="panel-historial" style="display:none;">
+    <div class="panel-historial-header">
+      <i data-lucide="clipboard-list"></i>
+      Historial de cotizaciones creadas
+      <span class="contador-resultados" id="contador-historial"></span>
+    </div>
+    <div class="stats-historial" id="stats-historial">
+      <div class="stat-card">
+        <div class="stat-icon total"><i data-lucide="database"></i></div>
+        <div class="stat-data">
+          <span class="stat-valor" id="stat-total">0</span>
+          <span class="stat-label">Total</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon enviados"><i data-lucide="check-circle"></i></div>
+        <div class="stat-data">
+          <span class="stat-valor" id="stat-enviados">0</span>
+          <span class="stat-label">Enviados</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon errores"><i data-lucide="alert-circle"></i></div>
+        <div class="stat-data">
+          <span class="stat-valor" id="stat-errores">0</span>
+          <span class="stat-label">Errores</span>
+        </div>
+      </div>
+    </div>
+    <div class="filtros-historial">
+      <label for="filtro-fecha-desde"><i data-lucide="calendar" style="width:12px;height:12px;margin-right:3px;vertical-align:middle;"> </i>Desde</label>
+      <input type="date" id="filtro-fecha-desde" class="input-fecha-filtro">
+      <label for="filtro-fecha-hasta"><i data-lucide="calendar" style="width:12px;height:12px;margin-right:3px;vertical-align:middle;"> </i>Hasta</label>
+      <input type="date" id="filtro-fecha-hasta" class="input-fecha-filtro">
+      <label for="filtro-ejecutivo"><i data-lucide="user" style="width:12px;height:12px;margin-right:3px;vertical-align:middle;"> </i>Ejecutivo</label>
+      <select id="filtro-ejecutivo" class="select-ejecutivo-filtro">
+        <option value="">Todos</option>
+      </select>
+      <button type="button" id="boton-limpiar-filtro" class="boton-limpiar-filtro" style="display:none;">
+        <i data-lucide="x-circle"></i> Limpiar
+      </button>
+      <span class="resultado-filtro" id="resultado-filtro"></span>
+    </div>
+    <div class="historial-split">
+      <div class="panel-historial-body">
+        <table class="tabla-historial">
+          <thead>
+            <tr>
+              <th><i data-lucide="calendar" style="width:11px;height:11px;margin-right:4px;vertical-align:middle;"> </i>Fecha</th>
+              <th><i data-lucide="building" style="width:11px;height:11px;margin-right:4px;vertical-align:middle;"> </i>Cliente</th>
+              <th><i data-lucide="package" style="width:11px;height:11px;margin-right:4px;vertical-align:middle;"> </i>Artículos</th>
+              <th><i data-lucide="hash" style="width:11px;height:11px;margin-right:4px;vertical-align:middle;"> </i>Cotización</th>
+              <th><i data-lucide="truck" style="width:11px;height:11px;margin-right:4px;vertical-align:middle;"> </i>N° Entrega</th>
+              <th><i data-lucide="file-text" style="width:11px;height:11px;margin-right:4px;vertical-align:middle;"> </i>N° Factura</th>
+              <th><i data-lucide="activity" style="width:11px;height:11px;margin-right:4px;vertical-align:middle;"> </i>Estado</th>
+              <th><i data-lucide="user" style="width:11px;height:11px;margin-right:4px;vertical-align:middle;"> </i>Subido por</th>
+            </tr>
+          </thead>
+          <tbody id="cuerpo-tabla-historial"></tbody>
+        </table>
+      </div>
+      <div class="historial-preview" id="historial-preview" style="display:none;">
+        <div class="historial-preview-toolbar">
+          <span id="historial-preview-info"><i data-lucide="file"></i> Documento</span>
+          <button type="button" id="boton-cerrar-preview-historial"><i data-lucide="x"></i></button>
+        </div>
+        <iframe id="iframe-preview-historial" title="Documento del pedido"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-espera" style="display:none;">
+    <div class="panel-historial-header">
+      <i data-lucide="pause-circle"></i>
+      Cotizaciones en espera
+      <span class="contador-resultados" id="contador-espera"></span>
+    </div>
+    <div class="panel-historial-body">
+      <table class="tabla-historial">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Cliente</th>
+            <th>Artículos</th>
+            <th>Nota</th>
+            <th id="col-empleado-espera" style="display:none;">Empleado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cuerpo-tabla-espera"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-carga">
     <div id="zona-carga">
       <i data-lucide="scan-line"></i>
       <div><b>Arrastra las notas de pedido</b> (foto o PDF), o haz clic para elegirlas.</div>
       <div style="font-size:12px; margin-top:4px;">Un PDF de varias páginas cuenta como varias notas — se lee cada una por separado. PNG, JPG, WEBP, BMP también. Máx. 30 MB.</div>
-      <input type="file" id="entrada-archivo" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp">
+      <input type="file" id="entrada-archivo" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp,.opus,.ogg,.m4a,.mp3,.wav,.webm,.aac,.flac" multiple>
     </div>
     <div id="mensaje-carga"></div>
     <div id="barra-progreso"><div id="barra-progreso-relleno"></div></div>
   </div>
+
+  <button type="button" class="secundario" id="boton-pedido-manual" style="display:none; margin-bottom:14px; width:calc(100% - 48px); justify-content:center;">
+    <i data-lucide="pencil-line"></i> Hacer pedido manual
+  </button>
 
   <div class="panel" id="panel-resultados" style="display:none;">
     <div class="barra-acciones">
@@ -248,12 +750,43 @@
       <button class="secundario" id="boton-nuevo"><i data-lucide="rotate-ccw"></i> Escanear otras notas</button>
       <span class="contador-resultados" id="contador-resultados"></span>
     </div>
+    <div id="banner-multi-contenedor"></div>
     <div class="lista-pedidos" id="lista-pedidos"></div>
   </div>
 </main>
 
+<div class="overlay-modal" id="overlay-montar-pedido" style="display:none;">
+  <div class="modal-montar-pedido">
+    <button type="button" class="boton-cerrar-modal" id="boton-cerrar-modal"><i data-lucide="x"></i></button>
+    <div id="contenido-modal-montar"></div>
+  </div>
+</div>
+
+<div class="overlay-modal" id="overlay-busqueda-producto" style="display:none;">
+  <div class="modal-busqueda-producto">
+    <button type="button" class="boton-cerrar-modal" id="boton-cerrar-busqueda-producto"><i data-lucide="x"></i></button>
+    <div class="bloque-busqueda-producto">
+      <i data-lucide="search"></i>
+      <input type="text" class="input-buscar-producto" id="input-buscar-producto-modal" placeholder="Buscar en el maestro de ARA_PROYECT (código, código de barras o descripción)…">
+    </div>
+    <div class="aviso-precio-referencia" id="aviso-precio-referencia" style="display:none;"></div>
+    <div class="busqueda-producto-split">
+      <div class="resultados-producto" id="lista-resultados-producto"></div>
+      <div class="preview-imagen-producto" id="preview-imagen-producto">
+        <span class="sin-imagen">Pasá el cursor sobre un producto para ver su foto</span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 let ultimosResultados = [];
+let sesionActiva = false;
+// Comentario del banner "Subir por lote" (11/09) — el banner se vuelve a
+// dibujar entero cada vez que cambia el cliente de CUALQUIER página
+// (actualizarBannerMulti), lo que borraría un comentario a medio
+// escribir si no se guarda acá aparte del DOM.
+let comentariosLotePorCliente = {};
 
 function refrescarIconos() { if (window.lucide) lucide.createIcons(); }
 
@@ -276,35 +809,38 @@ async function verificarEstadoOCR() {
   }
 }
 
+async function cargarSesion() {
+  const bloque = document.getElementById("bloque-sesion");
+  if (!bloque) return;
+  try {
+    const respuesta = await fetch("/api/sesion");
+    const datos = await respuesta.json();
+    sesionActiva = datos.logueado;
+    bloque.innerHTML = datos.logueado
+      ? `<span class="usuario-activo"><i data-lucide="user-check"></i> ${escHtml(datos.nombre)}</span>
+         <a href="/logout"><i data-lucide="log-out"></i> Salir</a>`
+      // El login se dispara SIEMPRE desde el sidebar del ERP (el JWT lo firma
+      // el ERP, no hay forma de "iniciar sesión" haciendo clic acá) — este
+      // bloque solo informa que falta, no ofrece un botón que no haría nada.
+      : `<span class="usuario-activo" title="Entrá desde el sidebar del ERP para identificarte"><i data-lucide="user-x"></i> Sin sesión del CRM</span>`;
+    refrescarIconos();
+  } catch (error) {
+    bloque.innerHTML = "";
+  }
+}
+
 async function actualizarContadorHistorico() {
   const texto = document.getElementById("texto-historico");
   try {
     const respuesta = await fetch("/api/pedidos/historico/estado");
     const datos = await respuesta.json();
-    texto.textContent = datos.existe ? `${datos.filas} artículo(s)` : "vacío todavía";
+    texto.textContent = datos.existe ? `${datos.filas}` : "0";
   } catch (error) {
     texto.textContent = "?";
   }
 }
 
-document.getElementById("boton-reiniciar-historico").addEventListener("click", async () => {
-  const texto = document.getElementById("texto-historico").textContent;
-  if (!confirm(`¿Eliminar el progreso del histórico (${texto})? Queda un respaldo con la fecha en /data, pero el contador vuelve a cero.`)) return;
-
-  const boton = document.getElementById("boton-reiniciar-historico");
-  boton.disabled = true;
-  try {
-    const respuesta = await fetch("/api/pedidos/historico/reiniciar", { method: "POST" });
-    const datos = await respuesta.json();
-    if (!respuesta.ok) throw new Error(datos.error || "No se pudo reiniciar el histórico");
-    await actualizarContadorHistorico();
-  } catch (error) {
-    alert(`Error: ${error.message}`);
-  } finally {
-    boton.disabled = false;
-  }
-});
-
+const panelCarga = document.getElementById("panel-carga");
 const zonaCarga = document.getElementById("zona-carga");
 const entradaArchivo = document.getElementById("entrada-archivo");
 const mensajeCarga = document.getElementById("mensaje-carga");
@@ -320,10 +856,11 @@ zonaCarga.addEventListener("dragleave", () => zonaCarga.classList.remove("arrast
 zonaCarga.addEventListener("drop", (e) => {
   e.preventDefault();
   zonaCarga.classList.remove("arrastrando");
-  if (e.dataTransfer.files.length) escanearArchivo(e.dataTransfer.files[0]);
+  if (e.dataTransfer.files.length) escanearLote(e.dataTransfer.files);
 });
 entradaArchivo.addEventListener("change", () => {
-  if (entradaArchivo.files.length) escanearArchivo(entradaArchivo.files[0]);
+  if (entradaArchivo.files.length) escanearLote(entradaArchivo.files);
+  entradaArchivo.value = "";
 });
 
 function mensajeProgreso(texto) {
@@ -342,63 +879,91 @@ function actualizarContador() {
   contadorResultados.textContent = `${totalItems} artículo(s) en ${ultimosResultados.length} nota(s)`;
 }
 
-async function escanearArchivo(archivo) {
+let paginaGlobalContador = 0;
+let refDocumentoActual = null;
+
+async function escanearLote(listaArchivos) {
+  const archivos = Array.from(listaArchivos);
   ultimosResultados = [];
   listaPedidos.innerHTML = "";
   panelResultados.style.display = "block";
   barraProgreso.classList.add("visible");
+  paginaGlobalContador = 0;
+  refDocumentoActual = null;
+
+  for (let i = 0; i < archivos.length; i++) {
+    const archivo = archivos[i];
+    const prefijo = archivos.length > 1 ? `[${i + 1}/${archivos.length}] ` : "";
+    try {
+      await escanearArchivo(archivo, prefijo);
+    } catch (error) {
+      paginaGlobalContador++;
+      const resultadoError = { ok: false, pagina: paginaGlobalContador, error: `"${archivo.name}": ${error.message}`, archivo: archivo.name };
+      ultimosResultados.push(resultadoError);
+      agregarTarjeta(resultadoError);
+    }
+  }
+
+  barraProgreso.classList.remove("visible");
+  panelCarga.style.display = "none";
+  document.getElementById("boton-pedido-manual").style.display = "none";
+  mensajeCarga.textContent = `Listo: ${ultimosResultados.length} nota(s) leída(s)${archivos.length > 1 ? ` en ${archivos.length} archivo(s)` : ""}.`;
+  actualizarBannerMulti();
+}
+
+async function escanearArchivo(archivo, prefijo = "") {
   barraProgresoRelleno.style.width = "0%";
-  mensajeProgreso(`Preparando "${archivo.name}"…`);
+  mensajeProgreso(`${prefijo}Preparando "${archivo.name}"…`);
 
   const datosFormulario = new FormData();
   datosFormulario.append("archivo", archivo);
 
-  try {
-    const respuesta = await fetch("/api/pedidos/escanear", { method: "POST", body: datosFormulario });
+  const respuesta = await fetch("/api/pedidos/escanear", { method: "POST", body: datosFormulario });
 
-    if (!respuesta.ok || !respuesta.body) {
-      const datos = await respuesta.json().catch(() => ({}));
-      throw new Error(datos.error || "Error al escanear");
-    }
+  if (!respuesta.ok || !respuesta.body) {
+    const datos = await respuesta.json().catch(() => ({}));
+    throw new Error(datos.error || "Error al escanear");
+  }
 
-    const lector = respuesta.body.getReader();
-    const decodificador = new TextDecoder();
-    let buffer = "";
-    let total = 0;
-    let procesadas = 0;
+  const lector = respuesta.body.getReader();
+  const decodificador = new TextDecoder();
+  let buffer = "";
+  let total = 0;
+  let procesadas = 0;
 
-    while (true) {
-      const { done, value } = await lector.read();
-      if (done) break;
-      buffer += decodificador.decode(value, { stream: true });
+  while (true) {
+    const { done, value } = await lector.read();
+    if (done) break;
+    buffer += decodificador.decode(value, { stream: true });
 
-      let indiceSalto;
-      while ((indiceSalto = buffer.indexOf("\n")) >= 0) {
-        const linea = buffer.slice(0, indiceSalto).trim();
-        buffer = buffer.slice(indiceSalto + 1);
-        if (!linea) continue;
-        const evento = JSON.parse(linea);
+    let indiceSalto;
+    while ((indiceSalto = buffer.indexOf("\n")) >= 0) {
+      const linea = buffer.slice(0, indiceSalto).trim();
+      buffer = buffer.slice(indiceSalto + 1);
+      if (!linea) continue;
+      const evento = JSON.parse(linea);
 
-        if (evento.evento === "inicio") {
-          total = evento.total_paginas;
-          mensajeProgreso(`Leyendo nota 0 de ${total}…`);
-        } else if (evento.evento === "pagina") {
-          procesadas++;
-          ultimosResultados.push(evento.resultado);
-          agregarTarjeta(evento.resultado);
-          actualizarContador();
-          barraProgresoRelleno.style.width = `${(procesadas / total) * 100}%`;
-          mensajeProgreso(`Leyendo nota ${procesadas} de ${total}…`);
-          if (evento.resultado.ok) actualizarContadorHistorico();
-        } else if (evento.evento === "fin") {
-          mensajeCarga.textContent = `Listo: ${procesadas} nota(s) leída(s).`;
-          barraProgreso.classList.remove("visible");
+      if (evento.evento === "inicio") {
+        total = evento.total_paginas;
+        mensajeProgreso(`${prefijo}Leyendo nota 0 de ${total}…`);
+        if (evento.ref_documento) {
+          refDocumentoActual = evento.ref_documento;
         }
+      } else if (evento.evento === "pagina") {
+        procesadas++;
+        paginaGlobalContador++;
+        evento.resultado.pagina = paginaGlobalContador;
+        if (refDocumentoActual) {
+          evento.resultado.ref_documento = refDocumentoActual;
+        }
+        ultimosResultados.push(evento.resultado);
+        agregarTarjeta(evento.resultado);
+        actualizarContador();
+        barraProgresoRelleno.style.width = `${(procesadas / total) * 100}%`;
+        mensajeProgreso(`${prefijo}Leyendo nota ${procesadas} de ${total}…`);
+        if (evento.resultado.ok) actualizarContadorHistorico();
       }
     }
-  } catch (error) {
-    mensajeCarga.textContent = `Error: ${error.message}`;
-    barraProgreso.classList.remove("visible");
   }
 }
 
@@ -406,11 +971,17 @@ function filaItem(pagina, item, indice) {
   const vacio = !item.articulo;
   return `
     <tr data-indice="${indice}">
-      <td><input class="input-item ${vacio ? "vacio-articulo" : ""}" type="text" data-campo="articulo" value="${escHtml(item.articulo || "")}" placeholder="Artículo…"></td>
-      <td><input class="input-item input-cantidad" type="text" data-campo="cantidad" value="${escHtml(item.cantidad || "")}" placeholder="Cant."></td>
-      <td class="celda-pediatrico"><input type="checkbox" data-campo="pediatrico" ${item.pediatrico ? "checked" : ""}></td>
-      <td><button type="button" class="boton-quitar-item" title="Quitar artículo"><i data-lucide="x"></i></button></td>
-    </tr>`;
+      <td>
+        <div class="celda-articulo">
+          <input class="input-item ${vacio ? "vacio-articulo" : ""}" type="text" data-campo="articulo" value="${escHtml(item.articulo || "")}" placeholder="Artículo…">
+          <button type="button" class="boton-lupa-producto" title="Buscar este artículo en el maestro de ARA_PROYECT"><i data-lucide="search"></i></button>
+        </div>
+      </td>
+      <td><input class="input-item input-codigo ${item.codigo ? "" : "sin-codigo"}" type="text" data-campo="codigo" value="${escHtml(item.codigo || "")}" placeholder="—"></td>
+       <td><input class="input-item input-cantidad" type="text" data-campo="cantidad" value="${escHtml(item.cantidad || "")}" placeholder="Cant."></td>
+       <td><input class="input-item" type="text" data-campo="codigo_barra" value="${escHtml(item.codigo_barra || "")}" placeholder="—" title="Código de barras leído de la imagen — si no se veía en el documento, queda vacío. Editable a mano."></td>
+       <td><button type="button" class="boton-quitar-item" title="Quitar artículo"><i data-lucide="x"></i></button></td>
+     </tr>`;
 }
 
 function tablaItems(pagina, items) {
@@ -419,7 +990,7 @@ function tablaItems(pagina, items) {
   }
   return `
     <table class="tabla-items" id="tabla-items-${pagina}">
-      <thead><tr><th>Artículo</th><th>Cantidad</th><th>Pediátrico</th><th></th></tr></thead>
+       <thead><tr><th>Artículo</th><th>Código</th><th>Cantidad</th><th>Cód. Barras</th><th></th></tr></thead>
       <tbody>${items.map((item, indice) => filaItem(pagina, item, indice)).join("")}</tbody>
     </table>`;
 }
@@ -433,27 +1004,149 @@ function tarjetaResultado(r) {
         <div class="texto-error">${escHtml(r.error)}</div>
       </div>`;
   }
+  // Audio muy ambiguo (11/09, a pedido explícito del usuario): en vez de
+  // forzar una lista de artículos inventada, el modelo avisó que no se
+  // puede armar el pedido con confianza — se muestra la transcripción
+  // (para que el ejecutivo la lea) y un botón para pasar a pedido
+  // manual EN ESTE MISMO lugar, sin tabla de ítems ni "Montar pedido".
+  if (r.ambiguo) {
+    return `
+      <div class="tarjeta-pedido fila-ambigua" id="${idTarjeta}" data-pagina="${r.pagina}">
+        <div class="cabecera-tarjeta"><span>Pág. ${r.pagina}</span> <i data-lucide="mic-off" style="width:13px;height:13px;color:var(--negativa);"></i></div>
+        <div class="texto-error">Este audio es muy ambiguo. Por favor, procese con pedido manual.</div>
+        ${r.texto_ocr ? `<div class="texto-transcripcion-ambigua">${escHtml(r.texto_ocr.split("\n\n")[0])}</div>` : ""}
+        <button type="button" class="boton-procesar-manual-ambiguo secundario" data-pagina="${r.pagina}"><i data-lucide="edit-3"></i> Proceder con pedido manual</button>
+      </div>`;
+  }
   const campos = r.campos;
-  const sede = campos.sede || "";
   const esRespaldo = (r.motor || "").includes("respaldo");
+  // Audio ambiguo pasado a manual (12/09, a pedido explícito del
+  // usuario): en vez de perder la transcripción al pasar a la tabla
+  // vacía, se muestra AL LADO — para que la persona pueda leerla y
+  // copiar a mano lo que considere un producto y una cantidad, en vez
+  // de tener que recordarla o volver a escuchar el audio.
+  const cuerpoPedido = `
+      <div class="bloque-montar-pedido">
+        <button type="button" class="boton-montar-pedido secundario" data-pagina="${r.pagina}"><i data-lucide="package-plus"></i> Montar pedido</button>
+        <button type="button" class="boton-dejar-espera secundario" data-pagina="${r.pagina}"><i data-lucide="pause-circle"></i> Dejar en espera</button>
+      </div>
+      <div id="items-contenedor-${r.pagina}">${tablaItems(r.pagina, campos.items || [])}</div>
+      <button type="button" class="boton-agregar-item" data-pagina="${r.pagina}"><i data-lucide="plus"></i> Agregar artículo</button>`;
+  const cuerpo = r.audioManual
+    ? `<div class="fila-audio-manual">
+        <div class="panel-transcripcion-audio">
+          <div class="panel-transcripcion-audio-titulo"><i data-lucide="mic" style="width:12px;height:12px;vertical-align:-2px;"></i> Transcripción del audio</div>
+          <div class="panel-transcripcion-audio-texto">${escHtml((r.texto_ocr || "").split("\n\n")[0])}</div>
+        </div>
+        <div class="panel-manual-audio">${cuerpoPedido}</div>
+      </div>`
+    : cuerpoPedido;
   return `
     <div class="tarjeta-pedido" id="${idTarjeta}" data-pagina="${r.pagina}">
       <div class="cabecera-tarjeta">
         <span>Pág. ${r.pagina}</span>
         <span class="chip-motor ${esRespaldo ? "respaldo" : ""}" title="${esRespaldo ? "El motor principal falló, respondió el respaldo" : ""}">${r.motor || "—"}</span>
       </div>
-      <div class="fila-sede">
-        <label>Sede:</label>
-        <select class="select-sede ${sede ? "" : "sin-elegir"}" data-campo="sede">
-          <option value="" ${sede === "" ? "selected" : ""}>Sin especificar</option>
-          <option value="Sucursal" ${sede === "Sucursal" ? "selected" : ""}>Sucursal</option>
-          <option value="Principal" ${sede === "Principal" ? "selected" : ""}>Principal</option>
-        </select>
-      </div>
-      <div id="items-contenedor-${r.pagina}">${tablaItems(r.pagina, campos.items || [])}</div>
-      <button type="button" class="boton-agregar-item" data-pagina="${r.pagina}"><i data-lucide="plus"></i> Agregar artículo</button>
+      <div class="bloque-cliente-tarjeta" id="cliente-tarjeta-${r.pagina}">${contenidoBloqueCliente(r.pagina, r)}</div>
+      <div class="aviso-psicotropico" id="aviso-psicotropico-${r.pagina}" style="display:none;"></div>
+      <div class="aviso-psicotropico" id="aviso-producto-repetido-${r.pagina}" style="display:none;"></div>
+      ${cuerpo}
       <div class="archivo-origen" title="${escHtml(r.archivo)}">${escHtml(r.archivo)}</div>
     </div>`;
+}
+
+// Bloqueo de psicotrópicos (11/09, a pedido explícito del usuario): esto
+// es SOLO el aviso temprano en la interfaz — el bloqueo real, el que no
+// se puede saltear, está en servidor_ocr_ps.pedidos_subir (server-side).
+// Misma lista que bin/detectar_psicotropicos.py — mantener las dos en
+// sync si se agrega o saca una palabra.
+const PALABRAS_PSICOTROPICOS = [
+  "ALPRAZOLAM", "BROMAZEPAM", "CLONAZEPAM", "DIAZEPAM", "LORAZEPAM",
+  "MIDAZOLAM", "CLORDIAZEPOXIDO", "FLUNITRAZEPAM", "TRIAZOLAM",
+  "CLOBAZAM", "FLURAZEPAM", "NITRAZEPAM", "CLORAZEPATO",
+  "ZOLPIDEM", "ZOPICLONA", "ESZOPICLONA",
+  "FENOBARBITAL", "PENTOBARBITAL", "TIOPENTAL", "SECOBARBITAL",
+  "TRAMADOL", "MORFINA", "CODEINA", "OXICODONA", "FENTANILO",
+  "METADONA", "MEPERIDINA", "PETIDINA", "BUPRENORFINA", "HIDROCODONA",
+  "HIDROMORFONA",
+  "METILFENIDATO", "ANFETAMINA", "DEXTROANFETAMINA",
+  "LISDEXANFETAMINA", "FENTERMINA",
+  "KETAMINA", "PREGABALINA",
+  "ANSILAN", "CLONATRIL", "ZOLPIDEX", "RIVOTRIL", "LEXOTANIL",
+  "TRANXENE", "XANAX", "VALIUM",
+];
+
+function _normalizarTexto(texto) {
+  return (texto || "").trim().toUpperCase()
+    .replace(/Á/g, "A").replace(/É/g, "E").replace(/Í/g, "I").replace(/Ó/g, "O").replace(/Ú/g, "U").replace(/Ñ/g, "N");
+}
+
+function detectarPsicotropico(texto) {
+  const normalizado = _normalizarTexto(texto);
+  if (!normalizado) return null;
+  return PALABRAS_PSICOTROPICOS.find((palabra) => new RegExp(`\\b${palabra}\\b`).test(normalizado)) || null;
+}
+
+// Artículos repetidos en la misma tabla (14/09, a pedido explícito del
+// usuario, caso real: el OCR duplicó un renglón y casi se sube dos veces
+// el mismo artículo). Se compara por "codigo" (el confirmado contra el
+// maestro vía la lupa) — dos redacciones distintas del mismo producto en
+// "articulo" no cuentan, solo un código repetido es señal segura. Nunca
+// se suman las cantidades solas: la persona decide y corrige a mano.
+function itemsConCodigoRepetido(items) {
+  const primeraAparicion = new Map();
+  const repetidos = new Set();
+  items.forEach((item, indice) => {
+    const codigo = (item.codigo || "").trim().toUpperCase();
+    if (!codigo) return;
+    if (primeraAparicion.has(codigo)) {
+      repetidos.add(primeraAparicion.get(codigo));
+      repetidos.add(indice);
+    } else {
+      primeraAparicion.set(codigo, indice);
+    }
+  });
+  return repetidos;
+}
+
+function actualizarAvisoPsicotropico(pagina) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  const avisoPsico = document.getElementById(`aviso-psicotropico-${pagina}`);
+  const avisoRepetido = document.getElementById(`aviso-producto-repetido-${pagina}`);
+  const tarjeta = document.getElementById(`tarjeta-${pagina}`);
+  if (!resultado || !avisoPsico || !avisoRepetido || !tarjeta) return;
+  const items = resultado.campos.items || [];
+
+  const encontrados = items
+    .map((item) => ({ articulo: item.articulo, palabra: detectarPsicotropico(item.articulo) }))
+    .filter((e) => e.palabra);
+  if (encontrados.length) {
+    avisoPsico.style.display = "flex";
+    avisoPsico.innerHTML = `<i data-lucide="shield-alert"></i> <span>Este pedido contiene psicotrópicos (${encontrados.map((e) => escHtml(e.articulo)).join(", ")}). Por favor procese con el departamento correspondiente — no se puede montar por acá.</span>`;
+  } else {
+    avisoPsico.style.display = "none";
+    avisoPsico.innerHTML = "";
+  }
+
+  const indicesRepetidos = itemsConCodigoRepetido(items);
+  const tabla = document.getElementById(`tabla-items-${pagina}`);
+  if (tabla) {
+    tabla.querySelectorAll("tbody > tr").forEach((fila) => {
+      fila.classList.toggle("fila-item-repetida", indicesRepetidos.has(Number(fila.dataset.indice)));
+    });
+  }
+  if (indicesRepetidos.size) {
+    const nombres = [...new Set([...indicesRepetidos].map((i) => items[i].articulo || items[i].codigo))];
+    avisoRepetido.style.display = "flex";
+    avisoRepetido.innerHTML = `<i data-lucide="copy-x"></i> <span>Hay artículo(s) repetido(s) en más de una fila (${nombres.map(escHtml).join(", ")}) — quitá una de las filas o combiná la cantidad a mano antes de montar el pedido.</span>`;
+  } else {
+    avisoRepetido.style.display = "none";
+    avisoRepetido.innerHTML = "";
+  }
+
+  const botonMontar = tarjeta.querySelector(".boton-montar-pedido");
+  if (botonMontar) botonMontar.disabled = encontrados.length > 0 || indicesRepetidos.size > 0;
+  refrescarIconos();
 }
 
 function renderItems(pagina) {
@@ -463,12 +1156,13 @@ function renderItems(pagina) {
   contenedor.innerHTML = tablaItems(pagina, resultado.campos.items || []);
   refrescarIconos();
   activarTablaItems(pagina);
+  actualizarAvisoPsicotropico(pagina);
 }
 
 function activarTablaItems(pagina) {
   const tabla = document.getElementById(`tabla-items-${pagina}`);
   if (!tabla) return;
-  tabla.querySelectorAll("tbody tr").forEach((fila) => {
+  tabla.querySelectorAll("tbody > tr").forEach((fila) => {
     const indice = Number(fila.dataset.indice);
     fila.querySelectorAll("[data-campo]").forEach((campo) => {
       const evento = campo.type === "checkbox" ? "change" : "input";
@@ -478,8 +1172,17 @@ function activarTablaItems(pagina) {
         const item = resultado.campos.items[indice];
         if (!item) return;
         const nombreCampo = campo.dataset.campo;
-        item[nombreCampo] = campo.type === "checkbox" ? campo.checked : campo.value;
-        if (nombreCampo === "articulo") campo.classList.toggle("vacio-articulo", !campo.value);
+        let valor = campo.type === "checkbox" ? campo.checked : campo.value;
+        if (nombreCampo === "cantidad") {
+          const soloNum = valor.replace(/[^0-9.,]/g, "");
+          if (soloNum !== valor) { campo.value = soloNum; valor = soloNum; }
+        }
+        item[nombreCampo] = valor;
+        if (nombreCampo === "articulo") {
+          campo.classList.toggle("vacio-articulo", !campo.value);
+          actualizarAvisoPsicotropico(pagina);
+        }
+        if (nombreCampo === "codigo") campo.classList.toggle("sin-codigo", !campo.value);
         actualizarContador();
       });
     });
@@ -490,20 +1193,338 @@ function activarTablaItems(pagina) {
       renderItems(pagina);
       actualizarContador();
     });
+    fila.querySelector(".boton-lupa-producto").addEventListener("click", () => {
+      abrirBusquedaProducto(pagina, indice);
+    });
   });
+}
+
+// El endpoint externo de creación de pedidos devuelve una LISTA de números
+// de cotización (no uno solo) — un pedido de más de ~21 artículos ya
+// vuelve partido en dos cotizaciones de Profit (10/09, confirmado en
+// vivo). Acá llega como texto "1234,1235" (o un solo número si no se
+// dividió) — esto arma el texto a mostrar cubriendo los dos casos.
+function formatearCotizaciones(valor) {
+  if (!valor) return null;
+  const numeros = String(valor).split(",").map((n) => n.trim()).filter(Boolean);
+  if (!numeros.length) return null;
+  const etiqueta = numeros.length > 1 ? "Cotizaciones" : "Cotización";
+  return `${etiqueta} ${numeros.map((n) => "#" + n).join(", ")}`;
+}
+
+// Aviso de "duplicado" (14/09, caso real: cotización #134263 vieja
+// devuelta en vez de crear una nueva) — Cristmedicals reportó este pedido
+// como duplicado de uno viejo y devolvió SU cotización en vez de crear
+// una: no es un error (el pedido sí se procesó), pero el número que se ve
+// en pantalla puede NO ser el de un pedido nuevo — hay que verificarlo a
+// mano contra el original antes de confirmarle algo al cliente.
+function avisoDuplicado(datos) {
+  if (!datos.duplicado) return "";
+  return `<div class="aviso-duplicado"><i data-lucide="alert-triangle"></i>
+    Cristmedicals reportó este pedido como DUPLICADO de uno anterior y devolvió esa cotización en vez de crear una nueva — verificá a mano contra el pedido original antes de confirmarle algo al cliente.
+  </div>`;
+}
+
+// ---------------- Búsqueda de artículos contra el maestro de ARA_PROYECT ----------------
+
+function primerasPalabrasUtiles(texto) {
+  // Mismo criterio que bin/consultar_producto_ara.py: primera y segunda
+  // palabra REALES (saltea "de") — si el cuadro de búsqueda arranca solo
+  // con la primera palabra del artículo leído por OCR (ej. "Amoxicilina"),
+  // la búsqueda inicial queda demasiado amplia y nunca llega a filtrar por
+  // la segunda (ej. "500mg"), aunque el backend sí soporte las dos.
+  const palabras = (texto || "").trim().split(/\s+/).filter((p) => p && p.toLowerCase() !== "de");
+  return palabras.slice(0, 2).join(" ");
+}
+
+// Modal de búsqueda de artículo (10/09, a pedido explícito del usuario):
+// antes era un desplegable angosto pegado a la lupa — ahora se abre
+// centrado en pantalla con el fondo desenfocado (mismo patrón que "Montar
+// pedido"), para que la lista de coincidencias se vea grande. El cuadro
+// de texto sigue editable adentro del modal, por si hay que corregir o
+// ampliar la búsqueda antes de elegir.
+let busquedaProductoActiva = null; // {pagina, indice}
+let temporizadorBusquedaProducto = null;
+
+function abrirBusquedaProducto(pagina, indice) {
+  busquedaProductoActiva = { pagina, indice };
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  const item = resultado ? resultado.campos.items[indice] : null;
+  // Si el OCR (o el usuario a mano) cargó un código de barras, se busca
+  // por ESO primero — más rápido y exacto que buscar por nombre/código
+  // (09/09, a pedido explícito del usuario). Si no hay código de barras,
+  // se cae al criterio de siempre (primeras palabras del artículo).
+  // "trim" antes de decidir: un valor vacío-pero-no-string-vacío
+  // (espacios sueltos) no debe tratarse como código válido.
+  const codigoBarraCrudo = ((item && item.codigo_barra) || "").trim();
+  // Notación científica de Excel (10/09, a pedido explícito del usuario):
+  // cuando la celda del código de barras en el Excel/lista de origen no
+  // estaba formateada como texto, Excel lo muestra roto tipo
+  // "7,59846E+12" — eso NO es un código de barras real (el número de
+  // verdad se perdió), así que se ignora y se cae al nombre del
+  // artículo, que en estas mismas listas sí viene bien y da casi 100% de
+  // coincidencia.
+  const esNotacionCientifica = /\d[.,]?\d*E[+-]\d+/i.test(codigoBarraCrudo);
+  const codigoBarraLimpio = esNotacionCientifica ? "" : codigoBarraCrudo;
+  const textoInicial = codigoBarraLimpio || primerasPalabrasUtiles(item && item.articulo);
+
+  const overlay = document.getElementById("overlay-busqueda-producto");
+  const input = document.getElementById("input-buscar-producto-modal");
+  const lista = document.getElementById("lista-resultados-producto");
+  lista.innerHTML = "";
+  document.getElementById("aviso-precio-referencia").style.display = "none";
+  input.value = textoInicial;
+  overlay.style.display = "flex";
+  refrescarIconos();
+  input.focus();
+  input.select();
+
+  const ejecutarBusqueda = () => buscarProductos(input.value.trim(), pagina, indice);
+  input.oninput = () => {
+    clearTimeout(temporizadorBusquedaProducto);
+    temporizadorBusquedaProducto = setTimeout(ejecutarBusqueda, 350);
+  };
+  if (textoInicial) ejecutarBusqueda();
+}
+
+function cerrarBusquedaProducto() {
+  const overlay = document.getElementById("overlay-busqueda-producto");
+  if (overlay) overlay.style.display = "none";
+  busquedaProductoActiva = null;
+  ocultarPreviewImagenProducto();
+}
+
+// Foto del producto al pasar el cursor (11/09, a pedido explícito del
+// usuario: "concuerde con el visor de búsqueda", sin necesidad de hacer
+// clic). Sale de la carpeta local de 10.490 fotos (misma que usa el
+// Visor de Artículos de ARA_PROYECT), vía /api/pedidos/productos/imagen
+// — más confiable que el CDN externo (a pedido explícito del usuario).
+// Muchos códigos no van a tener foto todavía — el onerror lo cubre sin
+// romper el modal.
+//
+// 12/09, a pedido explícito del usuario: la imagen YA NO se oculta al
+// sacar el cursor de la tarjeta (antes desaparecía apenas se quería
+// mover el mouse hacia el botón de descarga) — se queda fija hasta que
+// se pasa el cursor por OTRO producto, para poder descargarla o
+// hacerle captura con calma. También se agrega un botón de descarga
+// directa, visible solo cuando la foto sí cargó.
+function mostrarPreviewImagenProducto(codigo, descripcion) {
+  const panel = document.getElementById("preview-imagen-producto");
+  if (!panel || !codigo) return;
+  const codigoLimpio = String(codigo).trim();
+  const url = `/api/pedidos/productos/imagen/${encodeURIComponent(codigoLimpio)}`;
+  panel.innerHTML = "";
+  const img = document.createElement("img");
+  img.alt = "Foto del producto";
+  img.onerror = () => { panel.innerHTML = `<span class="sin-imagen">Sin foto disponible</span>`; };
+  img.onload = () => {
+    // Mini descripción debajo de la foto (12/09, a pedido explícito del
+    // usuario): para que quede el nombre del producto en la misma
+    // captura/pantalla que la imagen, no solo la foto sola.
+    const descripcionEl = document.createElement("div");
+    descripcionEl.className = "preview-imagen-descripcion";
+    descripcionEl.textContent = `${codigoLimpio}${descripcion ? " — " + descripcion : ""}`;
+    panel.appendChild(descripcionEl);
+
+    const boton = document.createElement("a");
+    boton.className = "boton-descargar-imagen";
+    boton.href = url;
+    boton.download = `${codigoLimpio}.jpg`;
+    boton.innerHTML = `<i data-lucide="download"></i> Descargar imagen`;
+    panel.appendChild(boton);
+    refrescarIconos();
+  };
+  img.src = url;
+  panel.appendChild(img);
+}
+
+function ocultarPreviewImagenProducto() {
+  const panel = document.getElementById("preview-imagen-producto");
+  if (panel) panel.innerHTML = `<span class="sin-imagen">Pasá el cursor sobre un producto para ver su foto</span>`;
+}
+
+document.getElementById("boton-cerrar-busqueda-producto").addEventListener("click", cerrarBusquedaProducto);
+document.getElementById("overlay-busqueda-producto").addEventListener("mousedown", (evento) => {
+  if (evento.target.id === "overlay-busqueda-producto") cerrarBusquedaProducto();
+});
+document.addEventListener("keydown", (evento) => {
+  if (evento.key === "Escape" && document.getElementById("overlay-busqueda-producto").style.display !== "none") {
+    cerrarBusquedaProducto();
+  }
+});
+
+function colorCoincidencia(porcentaje) {
+  // Verde (100) -> amarillo (0), interpolando el tono — sin-stock pisa esto
+  // con rojo aparte (ver sinStock más abajo). No hay cortes fijos a
+  // propósito: un gradiente continuo se lee mejor que 2-3 colores planos
+  // cuando hay que comparar varios candidatos entre sí de un vistazo.
+  const p = Math.max(0, Math.min(100, Number(porcentaje) || 0));
+  const tono = 45 + (p / 100) * 95; // 45=amarillo, 140=verde
+  return `hsl(${tono}, 70%, 42%)`;
+}
+
+// Aclaración de precio (14/09, a pedido explícito del usuario: "que le
+// muestren a los clientes los precios... con su descuento aplicado sin
+// misterio"): el precio que se ve acá ya trae el descuento de ESE
+// cliente, pero es de referencia — Profit puede aplicar un descuento
+// adicional recién al facturar según la forma de pago (ej. pagar a tasa
+// BCV), algo que no se puede saber de antemano en la lupa. Se avisa
+// siempre que se ve un precio con descuento, para que nadie le cierre un
+// precio al cliente como si fuera definitivo.
+function actualizarAvisoPrecioReferencia(coCli) {
+  const aviso = document.getElementById("aviso-precio-referencia");
+  if (!aviso) return;
+  if (coCli) {
+    aviso.style.display = "flex";
+    aviso.innerHTML = `<i data-lucide="info"></i> <span>Precio de referencia con el descuento de este cliente ya aplicado — el precio final en factura puede variar según la forma de pago (ej. a tasa BCV).</span>`;
+  } else {
+    aviso.style.display = "flex";
+    aviso.innerHTML = `<i data-lucide="info"></i> <span>Precio de lista, sin descuento de cliente — elegí el cliente en el pedido para ver el precio con su descuento aplicado.</span>`;
+  }
+  refrescarIconos();
+}
+
+async function buscarProductos(texto, pagina, indice) {
+  const lista = document.getElementById("lista-resultados-producto");
+  ocultarPreviewImagenProducto();
+  if (!texto) { lista.innerHTML = ""; return; }
+  lista.innerHTML = `<div class="item-producto sin-resultados">Buscando…</div>`;
+  try {
+    const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+    const item = resultado ? resultado.campos.items[indice] : null;
+    const params = new URLSearchParams({ q: texto });
+    if (item && item.articulo) params.set("original", item.articulo);
+    // Precio real de Profit (09/09, movido acá desde la tabla): si ya hay
+    // cliente elegido para este pedido, sale con su descuento; si no,
+    // sale el precio de lista (informativo).
+    const coCliBusqueda = resultado && resultado.clienteElegido ? resultado.clienteElegido.co_cli : null;
+    if (coCliBusqueda) {
+      params.set("cliente", coCliBusqueda);
+    }
+    actualizarAvisoPrecioReferencia(coCliBusqueda);
+    const respuesta = await fetch(`/api/pedidos/productos/buscar?${params.toString()}`);
+    const datos = await respuesta.json();
+    const productos = datos.productos || [];
+    if (!productos.length) {
+      lista.innerHTML = `<div class="item-producto sin-resultados">Sin coincidencias en el maestro de ARA_PROYECT</div>`;
+      return;
+    }
+    lista.innerHTML = productos.map((p) => {
+      const sinStock = p.stock_act !== null && p.stock_act !== undefined && Number(p.stock_act) <= 0;
+      const colorBorde = sinStock ? "var(--negativa)" : colorCoincidencia(p.coincidencia);
+      const textoPrecio = (p.precio !== null && p.precio !== undefined) ? ` · $${Number(p.precio).toFixed(2)}` : "";
+      return `
+      <div class="item-producto ${sinStock ? "sin-stock" : ""}" style="border-left: 4px solid ${colorBorde};">
+        <div class="texto-producto">
+          <div class="nombre-prod">${escHtml(p.descripcion)}</div>
+          <div class="detalle-prod">Cód. ${escHtml(p.codigo)}${p.stock_act !== null && p.stock_act !== undefined ? " · stock " + p.stock_act : ""}${textoPrecio}</div>
+        </div>
+        ${p.coincidencia !== undefined ? `<span class="badge-coincidencia" style="color:${colorBorde};">${p.coincidencia}%</span>` : ""}
+        ${sinStock ? `<button type="button" class="boton-generar-alerta" title="Generar alerta de falta de stock"><i data-lucide="bell"></i></button>` : ""}
+      </div>`;
+    }).join("");
+    refrescarIconos();
+    Array.from(lista.querySelectorAll(".item-producto:not(.sin-resultados)")).forEach((el, i) => {
+      el.querySelector(".texto-producto").addEventListener("mousedown", (evento) => {
+        evento.preventDefault();
+        elegirProducto(pagina, indice, productos[i]);
+      });
+      el.addEventListener("mouseenter", () => mostrarPreviewImagenProducto(productos[i].codigo, productos[i].descripcion));
+    });
+    // Conectado 10/09 (a pedido explícito del usuario): antes era
+    // decorativo. Los botones aparecen SOLO en productos sin stock
+    // (sinStock), en el mismo orden que "productos" — se recorta acá esa
+    // misma lista para hacer corresponder cada botón con su producto.
+    const productosSinStock = productos.filter(
+      (p) => p.stock_act !== null && p.stock_act !== undefined && Number(p.stock_act) <= 0
+    );
+    Array.from(lista.querySelectorAll(".boton-generar-alerta")).forEach((boton, i) => {
+      boton.addEventListener("click", (evento) => {
+        evento.stopPropagation();
+        evento.preventDefault();
+        generarAlertaStock(productosSinStock[i], pagina, boton);
+      });
+    });
+  } catch (error) {
+    lista.innerHTML = `<div class="item-producto sin-resultados">Error consultando el maestro de ARA_PROYECT</div>`;
+  }
+}
+
+// Alerta de falta de stock (10/09, a pedido explícito del usuario): exige
+// que la página ya tenga cliente elegido — por eso el botón de
+// "Seleccionar cliente" ahora va primero, antes de usar la lupa — para
+// poder guardar en la BD con qué cliente estaba pidiendo el artículo que
+// no había.
+async function generarAlertaStock(producto, pagina, boton) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  const cliente = resultado && resultado.clienteElegido;
+  if (!cliente) {
+    alert("Elegí primero el cliente de esta página (botón arriba de la tarjeta, antes de \"Montar pedido\") para poder guardar la alerta con su código.");
+    return;
+  }
+  boton.disabled = true;
+  try {
+    const respuesta = await fetch("/api/pedidos/alertas_stock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cod_cliente: cliente.co_cli,
+        cliente_nombre: cliente.razon_social,
+        codigo_articulo: producto.codigo,
+        descripcion_articulo: producto.descripcion,
+      }),
+    });
+    const datos = await respuesta.json();
+    if (!respuesta.ok || !datos.ok) throw new Error(datos.error || "No se pudo guardar la alerta");
+    boton.innerHTML = `<i data-lucide="check"></i>`;
+    boton.title = "Alerta guardada";
+    refrescarIconos();
+  } catch (error) {
+    alert(`Error al generar la alerta: ${error.message}`);
+    boton.disabled = false;
+  }
+}
+
+function elegirProducto(pagina, indice, producto) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado) return;
+  const item = resultado.campos.items[indice];
+  if (!item) return;
+  // Se rellenan los dos campos que faltaban: código (nuevo) y descripción
+  // (se reemplaza el texto crudo del OCR por la descripción oficial del
+  // maestro, ya elegida a mano por el usuario — pedido explícito, 03/09).
+  item.codigo = producto.codigo;
+  item.articulo = producto.descripcion;
+  renderItems(pagina);
+  actualizarContador();
+  // Bug real (09/09): renderItems() reconstruye la tabla (que sí vuelve a
+  // ocultar su propia fila de búsqueda), pero el overlay de resultados es
+  // un único <div> GLOBAL fuera de la tabla — no se borraba solo al
+  // elegir un producto, quedaba flotando en pantalla con la lista vieja.
+  cerrarBusquedaProducto();
+}
+
+// Audio ambiguo -> pedido manual EN ESE MISMO lugar (11/09): convierte
+// el resultado en un pedido manual vacío y vuelve a dibujar la tarjeta
+// con la tabla de ítems de siempre, en vez de armar una página nueva.
+function convertirAudioAmbiguoEnManual(pagina) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado) return;
+  resultado.ambiguo = false;
+  resultado.audioManual = true;
+  resultado.campos = { sede: null, items: [] };
+  const tarjetaVieja = document.getElementById(`tarjeta-${pagina}`);
+  if (tarjetaVieja) tarjetaVieja.outerHTML = tarjetaResultado(resultado);
+  refrescarIconos();
+  activarTarjeta(pagina);
 }
 
 function activarTarjeta(pagina) {
   const tarjeta = listaPedidos.querySelector(`[data-pagina="${pagina}"]`);
   if (!tarjeta) return;
-  const selectSede = tarjeta.querySelector(".select-sede");
-  if (selectSede) {
-    selectSede.addEventListener("change", () => {
-      const resultado = ultimosResultados.find((r) => r.pagina === pagina);
-      if (!resultado) return;
-      resultado.campos.sede = selectSede.value || null;
-      selectSede.classList.toggle("sin-elegir", !selectSede.value);
-    });
+  const botonManualAmbiguo = tarjeta.querySelector(".boton-procesar-manual-ambiguo");
+  if (botonManualAmbiguo) {
+    botonManualAmbiguo.addEventListener("click", () => convertirAudioAmbiguoEnManual(pagina));
   }
   const botonAgregar = tarjeta.querySelector(".boton-agregar-item");
   if (botonAgregar) {
@@ -511,21 +1532,690 @@ function activarTarjeta(pagina) {
       const resultado = ultimosResultados.find((r) => r.pagina === pagina);
       if (!resultado) return;
       if (!resultado.campos.items) resultado.campos.items = [];
-      resultado.campos.items.push({ articulo: "", cantidad: "", pediatrico: false });
+       resultado.campos.items.push({ articulo: "", cantidad: "" });
       renderItems(pagina);
       const tabla = document.getElementById(`tabla-items-${pagina}`);
       const ultimoInput = tabla?.querySelector("tbody tr:last-child input[data-campo='articulo']");
       if (ultimoInput) ultimoInput.focus();
     });
   }
+  const botonMontar = tarjeta.querySelector(".boton-montar-pedido");
+  if (botonMontar) {
+    botonMontar.addEventListener("click", () => {
+      if (!sesionActiva) {
+        alert("No hay usuario activo. Entrá desde el sidebar del ERP antes de montar un pedido.");
+        return;
+      }
+      const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+      const items = resultado ? (resultado.campos.items || []) : [];
+      const encontrados = items.filter((item) => detectarPsicotropico(item.articulo));
+      if (encontrados.length) {
+        alert(`Este pedido contiene psicotrópicos (${encontrados.map((i) => i.articulo).join(", ")}). Por favor procese con el departamento correspondiente — no se puede montar por acá.`);
+        return;
+      }
+      if (itemsConCodigoRepetido(items).size) {
+        alert("Hay un artículo repetido en más de una fila de este pedido — quitá una de las filas o combiná la cantidad a mano antes de montar el pedido.");
+        return;
+      }
+      abrirModalMontar(pagina);
+    });
+  }
+  const botonEspera = tarjeta.querySelector(".boton-dejar-espera");
+  if (botonEspera) {
+    botonEspera.addEventListener("click", () => dejarEnEspera(pagina, botonEspera));
+  }
+  const bloqueCliente = document.getElementById(`cliente-tarjeta-${pagina}`);
+  if (bloqueCliente) {
+    activarBloqueCliente(bloqueCliente, pagina, () => { renderBloqueClienteTarjeta(pagina); actualizarBannerMulti(); });
+  }
   activarTablaItems(pagina);
+  actualizarAvisoPsicotropico(pagina);
+}
+
+// "Dejar en espera" (10/09, a pedido explícito del usuario): para cuando
+// el cliente dice que quiere agregar algo más pero que esperen — guarda
+// TODO lo hecho hasta ahora (items, código, cantidad, cliente ya
+// elegido) en la BD asociado al empleado activo, y saca la tarjeta de la
+// pantalla (ya no se pierde, pero tampoco estorba mientras se atiende
+// otra cosa). Se retoma después desde "En espera" (ver actualizarPanelEspera).
+async function dejarEnEspera(pagina, boton) {
+  if (!sesionActiva) {
+    alert("No hay usuario activo. Entrá desde el sidebar del ERP antes de dejar algo en espera.");
+    return;
+  }
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado || !resultado.ok) return;
+
+  const etiqueta = prompt("¿Alguna nota para identificar esta cotización en espera? (opcional)", resultado.clienteElegido ? resultado.clienteElegido.razon_social : "");
+  if (etiqueta === null) return; // canceló el prompt
+
+  boton.disabled = true;
+  try {
+    const respuesta = await fetch("/api/pedidos/espera/guardar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        campos: resultado.campos,
+        cliente: resultado.clienteElegido || null,
+        etiqueta: etiqueta.trim() || null,
+        archivo_origen: resultado.archivo,
+        motor: resultado.motor,
+      }),
+    });
+    const datos = await respuesta.json();
+    if (!respuesta.ok || !datos.ok) throw new Error(datos.error || "No se pudo dejar en espera");
+
+    // Sale de la pantalla de trabajo — ya está a salvo en la BD.
+    ultimosResultados = ultimosResultados.filter((r) => r.pagina !== pagina);
+    document.getElementById(`tarjeta-${pagina}`)?.remove();
+    actualizarContador();
+    actualizarContadorEspera();
+  } catch (error) {
+    alert(`Error al dejar en espera: ${error.message}`);
+    boton.disabled = false;
+  }
+}
+
+// ---------------- Cotizaciones en espera (ver/retomar) ----------------
+
+let esperaCargadaAlMenosUnaVez = false;
+
+function filaEspera(p, esGlobal) {
+  const fecha = p.fecha_registro ? new Date(p.fecha_registro).toLocaleString("es-VE", { dateStyle: "short", timeStyle: "short" }) : "—";
+  const cliente = p.cliente
+    ? `<span class="col-cliente"><strong>${escHtml(p.cliente.razon_social)}</strong> <span class="cliente-codigo">(${escHtml(p.cliente.co_cli)})</span></span>`
+    : `<span class="col-cliente"><span class="cliente-codigo">sin cliente elegido</span></span>`;
+  return `
+    <tr data-espera-id="${p.id}">
+      <td class="col-fecha">${fecha}</td>
+      <td>${cliente}</td>
+      <td style="text-align:center;font-weight:600;">${p.total_items ?? 0}</td>
+      <td>${escHtml(p.etiqueta || "—")}</td>
+      ${esGlobal ? `<td class="col-usuario">${escHtml(p.empleado_nombre || p.empleado_id)}</td>` : ""}
+      <td>
+        <button type="button" class="secundario boton-cargar-espera" data-id="${p.id}" style="font-size:11.5px;padding:5px 10px;"><i data-lucide="upload" style="width:12px;height:12px;"></i> Cargar</button>
+        <button type="button" class="secundario boton-descartar-espera" data-id="${p.id}" style="font-size:11.5px;padding:5px 10px;"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
+      </td>
+    </tr>`;
+}
+
+async function actualizarContadorEspera() {
+  try {
+    const respuesta = await fetch("/api/pedidos/espera/listar");
+    const datos = await respuesta.json();
+    const contador = document.getElementById("contador-espera-header");
+    if (contador) contador.textContent = datos.ok && datos.pedidos.length ? `(${datos.pedidos.length})` : "";
+  } catch (error) {
+    // silencioso — el contador del header no es crítico
+  }
+}
+
+async function actualizarPanelEspera() {
+  const tbody = document.getElementById("cuerpo-tabla-espera");
+  const contador = document.getElementById("contador-espera");
+  const colEmpleado = document.getElementById("col-empleado-espera");
+  try {
+    const respuesta = await fetch("/api/pedidos/espera/listar");
+    const datos = await respuesta.json();
+    if (!datos.ok) throw new Error(datos.error || "No se pudo cargar");
+    const pedidos = datos.pedidos || [];
+    colEmpleado.style.display = datos.es_global ? "" : "none";
+    tbody.innerHTML = pedidos.length
+      ? pedidos.map((p) => filaEspera(p, datos.es_global)).join("")
+      : `<tr><td colspan="${datos.es_global ? 6 : 5}" class="empty-historial"><i data-lucide="inbox"></i><p>No hay cotizaciones en espera${datos.es_global ? " (de nadie)" : ""}.</p></td></tr>`;
+    contador.textContent = `${pedidos.length} en espera`;
+    refrescarIconos();
+
+    tbody.querySelectorAll(".boton-cargar-espera").forEach((boton) => {
+      boton.addEventListener("click", () => cargarDesdeEspera(Number(boton.dataset.id), boton));
+    });
+    tbody.querySelectorAll(".boton-descartar-espera").forEach((boton) => {
+      boton.addEventListener("click", () => descartarEspera(Number(boton.dataset.id), boton));
+    });
+  } catch (error) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-historial" style="color:var(--negativa);"><i data-lucide="alert-triangle"></i><p>Error: ${escHtml(error.message)}</p></td></tr>`;
+    refrescarIconos();
+  }
+}
+
+async function cargarDesdeEspera(esperaId, boton) {
+  boton.disabled = true;
+  try {
+    const respuesta = await fetch(`/api/pedidos/espera/${esperaId}`);
+    const datos = await respuesta.json();
+    if (!respuesta.ok || !datos.ok) throw new Error(datos.error || "No se pudo cargar");
+    const p = datos.pedido;
+
+    paginaGlobalContador++;
+    const resultadoRetomado = {
+      pagina: paginaGlobalContador,
+      archivo: p.archivo_origen || "Cotización en espera",
+      ok: true,
+      campos: p.campos,
+      motor: p.motor || "En espera",
+      clienteElegido: p.cliente || null,
+    };
+    ultimosResultados.push(resultadoRetomado);
+    panelCarga.style.display = "none";
+    panelResultados.style.display = "block";
+    agregarTarjeta(resultadoRetomado);
+    actualizarContador();
+
+    await fetch(`/api/pedidos/espera/${esperaId}`, { method: "DELETE" });
+    actualizarPanelEspera();
+    actualizarContadorEspera();
+    document.getElementById("panel-espera").style.display = "none";
+  } catch (error) {
+    alert(`Error al cargar: ${error.message}`);
+    boton.disabled = false;
+  }
+}
+
+async function descartarEspera(esperaId, boton) {
+  if (!confirm("¿Descartar esta cotización en espera? No se puede deshacer.")) return;
+  boton.disabled = true;
+  try {
+    const respuesta = await fetch(`/api/pedidos/espera/${esperaId}`, { method: "DELETE" });
+    const datos = await respuesta.json();
+    if (!respuesta.ok || !datos.ok) throw new Error(datos.error || "No se pudo descartar");
+    actualizarPanelEspera();
+    actualizarContadorEspera();
+  } catch (error) {
+    alert(`Error al descartar: ${error.message}`);
+    boton.disabled = false;
+  }
+}
+
+document.getElementById("boton-ver-espera").addEventListener("click", () => {
+  const panelEspera = document.getElementById("panel-espera");
+  const abrir = panelEspera.style.display === "none";
+  panelEspera.style.display = abrir ? "block" : "none";
+  if (abrir) actualizarPanelEspera();
+});
+
+// ---------------- Montar pedido: modal centrado (previsualización + cliente + subir) ----------------
+
+const temporizadoresBusquedaCliente = {};
+let paginaActivaModal = null;
+let modoMultiActivo = false;
+
+const overlayModal = document.getElementById("overlay-montar-pedido");
+const contenidoModal = document.getElementById("contenido-modal-montar");
+
+document.getElementById("boton-cerrar-modal").addEventListener("click", cerrarModalMontar);
+overlayModal.addEventListener("mousedown", (evento) => {
+  if (evento.target === overlayModal) cerrarModalMontar();
+});
+document.addEventListener("keydown", (evento) => {
+  if (evento.key === "Escape" && overlayModal.style.display !== "none") cerrarModalMontar();
+});
+
+function abrirModalMontar(pagina) {
+  paginaActivaModal = pagina;
+  overlayModal.style.display = "flex";
+  renderModalMontar();
+}
+
+function cerrarModalMontar() {
+  overlayModal.style.display = "none";
+  paginaActivaModal = null;
+  modoMultiActivo = false;
+}
+
+function contenidoPreviewPedido(resultado) {
+  const campos = resultado.campos;
+  const items = campos.items || [];
+  const itemsConCodigo = items.filter((i) => i.codigo);
+  const faltantes = items.length - itemsConCodigo.length;
+  // Orden pedido: código primero, descripción segundo, cantidad tercero.
+  const filasItems = itemsConCodigo.length
+    ? itemsConCodigo.map((i) => `
+      <li>
+        <span class="preview-codigo">${escHtml(i.codigo)}</span>
+        <span class="preview-descripcion">${escHtml(i.articulo)}</span>
+        <span class="preview-cantidad">× ${escHtml(i.cantidad || "?")}</span>
+      </li>`).join("")
+    : `<li class="preview-vacio">Sin artículos con código confirmado contra el maestro todavía.</li>`;
+  return `
+    <div class="preview-pedido">
+      <div class="preview-titulo">Vista previa del pedido</div>
+      <ul class="preview-items">${filasItems}</ul>
+      ${faltantes > 0 ? `<div class="preview-aviso">${faltantes} artículo(s) sin código del maestro — no se van a incluir. Usá la lupa en cada renglón para confirmarlos.</div>` : ""}
+    </div>`;
+}
+
+function contenidoBloqueCliente(pagina, resultado) {
+  const cliente = resultado.clienteElegido;
+  if (cliente) {
+    return `
+      <div class="bloque-cliente-pedido">
+        <div class="cliente-elegido">
+          <i data-lucide="user-check"></i>
+          <span>${escHtml(cliente.razon_social)} <span class="cliente-codigo">(${escHtml(cliente.co_cli)})</span></span>
+          <span class="descuento-cliente" id="descuento-cliente-${pagina}"></span>
+          <button type="button" class="boton-cambiar-cliente" data-pagina="${pagina}">Cambiar</button>
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="bloque-cliente-pedido">
+      <input type="text" class="input-buscar-cliente" placeholder="Buscar cliente por nombre o código…" data-pagina="${pagina}">
+      <div class="resultados-cliente" id="resultados-cliente-${pagina}"></div>
+    </div>`;
+}
+
+// Bloque de cliente reutilizable (10/09, a pedido explícito del usuario):
+// antes el cliente solo se elegía DENTRO del modal "Montar pedido" — ahora
+// hay un botón/bloque igual arriba de cada tarjeta, para elegirlo ANTES,
+// porque las alertas de falta de stock (ver generarAlertaStock) necesitan
+// el código de cliente y se generan desde la lupa, antes de llegar a
+// "Montar pedido". `activarBloqueCliente` conecta el buscador y el botón
+// "Cambiar" de CUALQUIER contenedor que tenga el HTML de
+// contenidoBloqueCliente adentro (la tarjeta o el modal), sin duplicar
+// la lógica de búsqueda.
+function activarBloqueCliente(contenedor, pagina, alCambiarCallback) {
+  const input = contenedor.querySelector(".input-buscar-cliente");
+  if (input) {
+    const lista = contenedor.querySelector(`#resultados-cliente-${pagina}`);
+    const ejecutar = () => buscarClientesPedido(input.value.trim(), lista, pagina, alCambiarCallback);
+    input.addEventListener("input", () => {
+      clearTimeout(temporizadoresBusquedaCliente[pagina]);
+      temporizadoresBusquedaCliente[pagina] = setTimeout(ejecutar, 350);
+    });
+    input.focus();
+  }
+  const botonCambiar = contenedor.querySelector(".boton-cambiar-cliente");
+  if (botonCambiar) {
+    botonCambiar.addEventListener("click", () => {
+      const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+      if (!resultado) return;
+      resultado.clienteElegido = null;
+      alCambiarCallback();
+    });
+  }
+}
+
+function renderBloqueClienteTarjeta(pagina) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  const contenedor = document.getElementById(`cliente-tarjeta-${pagina}`);
+  if (!resultado || !contenedor) return;
+  contenedor.innerHTML = contenidoBloqueCliente(pagina, resultado);
+  refrescarIconos();
+  activarBloqueCliente(contenedor, pagina, () => { renderBloqueClienteTarjeta(pagina); actualizarBannerMulti(); });
+  if (resultado.clienteElegido) cargarDescuentoCliente(resultado.clienteElegido.co_cli, `descuento-cliente-${pagina}`);
+}
+
+// Descuento lineal del cliente (11/09, a pedido explícito del usuario):
+// SOLO informativo por ahora ("hasta que yo tenga autorización" de
+// dejarlo editar) — el precio que ya se ve en la lupa sale con este
+// mismo descuento aplicado (ver obtener_precio en
+// bin/consultar_precio_profit.py), esto nomás muestra el número.
+async function cargarDescuentoCliente(coCli, idDestino) {
+  const destino = document.getElementById(idDestino);
+  if (!destino || !coCli) return;
+  destino.textContent = "…";
+  try {
+    const respuesta = await fetch(`/api/pedidos/clientes/${encodeURIComponent(coCli)}/descuento`);
+    const datos = await respuesta.json();
+    if (!respuesta.ok || !datos.ok) throw new Error(datos.error || "No se pudo consultar el descuento");
+    const pct = Number(datos.descuento_global_pct || 0);
+    destino.textContent = pct > 0 ? `Descuento ${pct}%` : "Sin descuento";
+    destino.classList.toggle("sin-descuento", pct <= 0);
+    destino.title = "";
+  } catch (error) {
+    destino.textContent = "";
+    destino.title = `No se pudo consultar el descuento: ${error.message}`;
+  }
+}
+
+function renderModalMontar() {
+  const pagina = paginaActivaModal;
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado || !contenidoModal) return;
+
+  const items = resultado.campos.items || [];
+  const itemsConCodigo = items.filter((i) => i.codigo);
+  const cliente = resultado.clienteElegido;
+  const listo = Boolean(cliente) && itemsConCodigo.length > 0;
+
+  contenidoModal.innerHTML = `
+    ${contenidoPreviewPedido(resultado)}
+    <div class="bloque-cliente-pedido" style="background:var(--panel-alt); border:1px solid var(--borde); border-radius:8px; padding:10px 14px; margin-bottom:10px;">
+      <div class="cliente-elegido" style="display:flex; align-items:center; gap:8px;">
+        <i data-lucide="user-check" style="width:15px;height:15px;color:var(--acento-oscuro);"></i>
+        <span style="font-weight:600; font-size:13px;">${cliente ? escHtml(cliente.razon_social) : "Sin cliente seleccionado"}</span>
+        ${cliente ? `<span class="cliente-codigo" style="color:var(--texto-tenue); font-size:11px;">(${escHtml(cliente.co_cli)})</span>` : ""}
+        ${cliente ? `<span class="descuento-cliente" id="descuento-cliente-modal-${pagina}"></span>` : ""}
+      </div>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:10px; text-transform:uppercase; letter-spacing:0.03em; color:var(--texto-tenue); font-weight:600; display:block; margin-bottom:4px;">
+        <i data-lucide="message-square" style="width:12px;height:12px;vertical-align:middle;margin-right:3px;"></i> Comentario (opcional)
+      </label>
+      <textarea class="input-comentario" placeholder="Observación para la cotización…" rows="3"></textarea>
+    </div>
+    <button type="button" class="boton-subir-pedido" data-pagina="${pagina}" ${listo ? "" : "disabled"}>
+      <i data-lucide="upload"></i> Subir pedido
+    </button>
+    <div class="resultado-subida" id="resultado-subida-${pagina}"></div>`;
+  refrescarIconos();
+  if (cliente) cargarDescuentoCliente(cliente.co_cli, `descuento-cliente-modal-${pagina}`);
+
+  const botonSubir = contenidoModal.querySelector(".boton-subir-pedido");
+  if (botonSubir) {
+    botonSubir.addEventListener("click", () => subirPedido(pagina));
+  }
+}
+
+async function buscarClientesPedido(texto, lista, pagina, alElegirCallback) {
+  if (!texto) { lista.innerHTML = ""; return; }
+  lista.innerHTML = `<div class="item-cliente sin-resultados">Buscando…</div>`;
+  try {
+    const respuesta = await fetch(`/api/pedidos/clientes/buscar?q=${encodeURIComponent(texto)}`);
+    const datos = await respuesta.json();
+    const clientes = datos.clientes || [];
+    if (!clientes.length) {
+      lista.innerHTML = `<div class="item-cliente sin-resultados">Sin coincidencias en PROFIT</div>`;
+      return;
+    }
+    lista.innerHTML = clientes.map((c) => `
+      <div class="item-cliente">
+        ${escHtml(c.razon_social)} <span class="codigo-cliente">${escHtml(c.co_cli)}</span>
+      </div>`).join("");
+    Array.from(lista.querySelectorAll(".item-cliente")).forEach((el, i) => {
+      el.addEventListener("mousedown", (evento) => {
+        evento.preventDefault();
+        const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+        if (!resultado) return;
+        // Solo se guarda co_cli + razon_social para MOSTRAR en pantalla —
+        // lo único que viaja al backend al subir es el código (co_cli).
+        resultado.clienteElegido = { co_cli: clientes[i].co_cli, razon_social: clientes[i].razon_social };
+        alElegirCallback();
+      });
+    });
+  } catch (error) {
+    lista.innerHTML = `<div class="item-cliente sin-resultados">Error consultando PROFIT</div>`;
+  }
+}
+
+async function subirPedido(pagina) {
+  if (!sesionActiva) {
+    alert("No hay usuario activo. Entrá desde el sidebar del ERP antes de montar un pedido.");
+    return;
+  }
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  const boton = document.querySelector(`.boton-subir-pedido[data-pagina="${pagina}"]`);
+  const salida = document.getElementById(`resultado-subida-${pagina}`);
+  if (!resultado || !boton || !salida) return;
+
+  // Leer comentario del modal (si existe)
+  const textareaComentario = contenidoModal.querySelector(".input-comentario");
+  const comentario = textareaComentario ? textareaComentario.value.trim() : "";
+
+  boton.disabled = true;
+  salida.className = "resultado-subida";
+  salida.textContent = "Subiendo…";
+
+  try {
+    const respuesta = await fetch("/api/pedidos/subir", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cod_cliente: resultado.clienteElegido.co_cli,
+        cliente_nombre: resultado.clienteElegido.razon_social,
+        motor: resultado.motor,
+        items: resultado.campos.items || [],
+        comentario: comentario || undefined,
+        archivo_origen: resultado.ref_documento || resultado.archivo || undefined,
+      }),
+    });
+    const datos = await respuesta.json();
+    if (!respuesta.ok || !datos.ok) throw new Error(datos.error || "El endpoint de pedidos no aceptó la solicitud");
+
+    resultado.subido = true;
+    salida.className = "resultado-subida exito";
+    const omitidos = datos.omitidos && datos.omitidos.length
+      ? ` (sin precio en Profit, no se incluyeron: ${datos.omitidos.join("; ")})`
+      : "";
+    const cotizacionTexto = datos.numero_cotizacion
+      ? `<b>${formatearCotizaciones(datos.numero_cotizacion)}</b>`
+      : `Pedido subido — cod_pedido ${datos.cod_pedido} (todavía sin número de cotización en la respuesta)`;
+    salida.innerHTML = `${cotizacionTexto}${omitidos}${avisoDuplicado(datos)}`;
+    refrescarIconos();
+    // La tarjeta con la tabla de artículos ya no tiene sentido en pantalla
+    // una vez subido con éxito (11/09, a pedido explícito del usuario:
+    // "sigue la misma tabla allí" — quedaba mostrando lo ya montado como
+    // si siguiera pendiente). Mismo criterio que "Dejar en espera": sale
+    // de ultimosResultados y de la lista visible.
+    ultimosResultados = ultimosResultados.filter((r) => r.pagina !== pagina);
+    document.getElementById(`tarjeta-${pagina}`)?.remove();
+    actualizarContador();
+    actualizarContadorHistorico();
+    actualizarBannerMulti();
+    actualizarHistorialPedidos();
+
+    if (modoMultiActivo) {
+      const siguiente = ultimosResultados.find((r) => r.ok && !r.subido);
+      if (siguiente) {
+        contenidoModal.insertAdjacentHTML("beforeend", `
+          <button type="button" class="boton-siguiente-pendiente"><i data-lucide="arrow-right"></i> Siguiente pedido pendiente</button>`);
+        refrescarIconos();
+        contenidoModal.querySelector(".boton-siguiente-pendiente").addEventListener("click", () => abrirModalMontar(siguiente.pagina));
+      } else {
+        modoMultiActivo = false;
+      }
+    }
+  } catch (error) {
+    salida.className = "resultado-subida error";
+    salida.textContent = `Error: ${error.message}`;
+    boton.disabled = false;
+  }
+}
+
+// ---------------- Modo múltiple: varias tarjetas para subir de corrido ----------------
+
+function gruposClientePendientes() {
+  // Páginas sin subir que ya tienen el MISMO cliente elegido (en 2+ notas) —
+  // esas se pueden combinar en un solo pedido en vez de subirlas una por una.
+  const pendientesConCliente = ultimosResultados.filter((r) => r.ok && !r.subido && r.clienteElegido);
+  const grupos = new Map();
+  pendientesConCliente.forEach((r) => {
+    const clave = r.clienteElegido.co_cli;
+    if (!grupos.has(clave)) grupos.set(clave, { cliente: r.clienteElegido, resultados: [] });
+    grupos.get(clave).resultados.push(r);
+  });
+  return Array.from(grupos.values()).filter((g) => g.resultados.length > 1);
+}
+
+function actualizarBannerMulti() {
+  const contenedor = document.getElementById("banner-multi-contenedor");
+  if (!contenedor) return;
+  const validas = ultimosResultados.filter((r) => r.ok);
+  const pendientes = validas.filter((r) => !r.subido);
+
+  let htmlLotes = "";
+  if (pendientes.length) {
+    htmlLotes = gruposClientePendientes().map((grupo) => {
+      const paginas = grupo.resultados.map((r) => r.pagina).join(", ");
+      return `
+        <div class="banner-multi lote" data-cli="${escHtml(grupo.cliente.co_cli)}">
+          <i data-lucide="package-check"></i>
+          <span class="texto-multi">${grupo.resultados.length} notas (pág. ${paginas}) tienen el mismo cliente: <b>${escHtml(grupo.cliente.razon_social)}</b> — se pueden subir juntas como un solo pedido.</span>
+          <button type="button" class="boton-subir-lote" data-cli="${escHtml(grupo.cliente.co_cli)}"><i data-lucide="layers"></i> Subir por lote (${grupo.resultados.length})</button>
+          <textarea class="input-comentario input-comentario-lote" data-cli="${escHtml(grupo.cliente.co_cli)}" placeholder="Comentario (opcional) — se agrega a la nota de entrega real de Profit" rows="2">${escHtml(comentariosLotePorCliente[grupo.cliente.co_cli] || "")}</textarea>
+          <div class="resultado-lote" id="resultado-lote-${escHtml(grupo.cliente.co_cli)}"></div>
+        </div>`;
+    }).join("");
+  }
+
+  const htmlModoMulti = (validas.length > 2 && pendientes.length)
+    ? `
+    <div class="banner-multi">
+      <i data-lucide="layers"></i>
+      <span class="texto-multi">Modo múltiple: ${pendientes.length} de ${validas.length} nota(s) todavía sin subir — buscale el cliente a cada una y subilas de corrido.</span>
+      <button type="button" id="boton-empezar-multi"><i data-lucide="play"></i> Empezar</button>
+    </div>`
+    : "";
+
+  contenedor.innerHTML = htmlLotes + htmlModoMulti;
+  if (!contenedor.innerHTML) return;
+  refrescarIconos();
+
+  const botonMulti = document.getElementById("boton-empezar-multi");
+  if (botonMulti) {
+    botonMulti.addEventListener("click", () => {
+      modoMultiActivo = true;
+      abrirModalMontar(pendientes[0].pagina);
+    });
+  }
+  contenedor.querySelectorAll(".boton-subir-lote").forEach((boton) => {
+    boton.addEventListener("click", () => subirPedidoPorLote(boton.dataset.cli));
+  });
+  contenedor.querySelectorAll(".input-comentario-lote").forEach((textarea) => {
+    textarea.addEventListener("input", () => { comentariosLotePorCliente[textarea.dataset.cli] = textarea.value; });
+  });
+}
+
+async function subirPedidoPorLote(coCli) {
+  if (!sesionActiva) {
+    alert("No hay usuario activo. Entrá desde el sidebar del ERP antes de montar un pedido.");
+    return;
+  }
+  const grupo = gruposClientePendientes().find((g) => g.cliente.co_cli === coCli);
+  const boton = document.querySelector(`.boton-subir-lote[data-cli="${coCli}"]`);
+  const salida = document.getElementById(`resultado-lote-${coCli}`);
+  if (!grupo || !boton || !salida) return;
+
+  // Comentario opcional (11/09, a pedido explícito del usuario) — mismo
+  // campo/mismo destino que el de "Montar pedido" (se agrega a la nota
+  // de entrega real de Profit, ver servidor_ocr_ps.pedidos_subir).
+  const textareaComentario = document.querySelector(`.banner-multi.lote[data-cli="${coCli}"] .input-comentario-lote`);
+  const comentario = textareaComentario ? textareaComentario.value.trim() : "";
+
+  const itemsCombinados = grupo.resultados.flatMap((r) => r.campos.items || []);
+  // 14/09: al combinar varias notas del mismo cliente en un solo pedido,
+  // el mismo artículo puede aparecer en DOS notas distintas — acá recién
+  // se nota, ninguna tarjeta individual lo hubiera detectado sola. Mismo
+  // bloqueo que en "Montar pedido" (el servidor lo vuelve a chequear
+  // igual, esto es solo para avisar antes de la llamada de red).
+  if (itemsConCodigoRepetido(itemsCombinados).size) {
+    alert("Al combinar estas notas queda un artículo repetido en más de una fila — corregilo a mano (quitá una fila o combiná la cantidad) en la nota correspondiente antes de subir el lote.");
+    return;
+  }
+
+  boton.disabled = true;
+  salida.className = "resultado-lote";
+  salida.textContent = "Subiendo el lote…";
+
+  try {
+    const respuesta = await fetch("/api/pedidos/subir", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cod_cliente: grupo.cliente.co_cli,
+        cliente_nombre: grupo.cliente.razon_social,
+        motor: grupo.resultados[0].motor,
+        items: itemsCombinados,
+        comentario: comentario || undefined,
+      }),
+    });
+    const datos = await respuesta.json();
+    if (!respuesta.ok || !datos.ok) throw new Error(datos.error || "El endpoint de pedidos no aceptó la solicitud");
+
+    grupo.resultados.forEach((r) => { r.subido = true; });
+    // Mismo criterio que subirPedido: las tarjetas ya montadas no tienen
+    // sentido en pantalla (11/09, a pedido explícito del usuario).
+    const paginasSubidas = new Set(grupo.resultados.map((r) => r.pagina));
+    ultimosResultados = ultimosResultados.filter((r) => !paginasSubidas.has(r.pagina));
+    paginasSubidas.forEach((pag) => document.getElementById(`tarjeta-${pag}`)?.remove());
+    actualizarContador();
+    const omitidos = datos.omitidos && datos.omitidos.length
+      ? ` (sin precio en Profit, no se incluyeron: ${datos.omitidos.join("; ")})`
+      : "";
+    const cotizacionTexto = datos.numero_cotizacion
+      ? formatearCotizaciones(datos.numero_cotizacion)
+      : `Pedido subido — cod_pedido ${datos.cod_pedido} (todavía sin número de cotización en la respuesta)`;
+    salida.className = "resultado-lote exito";
+    salida.innerHTML = `<b>${grupo.resultados.length} notas combinadas.</b> ${cotizacionTexto}${omitidos}${avisoDuplicado(datos)}`;
+    refrescarIconos();
+    actualizarContadorHistorico();
+    actualizarHistorialPedidos();
+    setTimeout(actualizarBannerMulti, 1500);
+  } catch (error) {
+    salida.className = "resultado-lote error";
+    salida.textContent = `Error: ${error.message}`;
+    boton.disabled = false;
+  }
 }
 
 function agregarTarjeta(resultado) {
   listaPedidos.insertAdjacentHTML("beforeend", tarjetaResultado(resultado));
   refrescarIconos();
-  if (resultado.ok) activarTarjeta(resultado.pagina);
+  if (resultado.ok) {
+    activarTarjeta(resultado.pagina);
+    autoBuscarItems(resultado.pagina);
+  }
 }
+
+// Auto-búsqueda: recorre items sin código y los busca por código de barras y descripción.
+// Si encuentra ≥99% de coincidencia, auto-completa código y descripción.
+async function autoBuscarItems(pagina) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado || !resultado.campos.items) return;
+  for (let i = 0; i < resultado.campos.items.length; i++) {
+    const item = resultado.campos.items[i];
+    if (item.codigo) continue;
+    const busqueda = (item.codigo_barra || "").trim() || (item.articulo || "").trim();
+    if (!busqueda) continue;
+    try {
+      const params = new URLSearchParams({ q: busqueda });
+      if (item.articulo) params.set("original", item.articulo);
+      const resp = await fetch(`/api/pedidos/productos/buscar?${params.toString()}`);
+      const datos = await resp.json();
+      const productos = datos.productos || [];
+      // Nunca auto-confirmar un producto SIN STOCK (11/09, a pedido
+      // explícito del usuario: "el OCR inyectó bien pero la regla del
+      // stock la mató") — aunque coincida 100%, si no hay unidades el
+      // usuario tiene que verlo pasando por la lupa (ahí SÍ se ve la
+      // alerta de falta de stock y el botón para generarla), no quedar
+      // confirmado en silencio como si el artículo estuviera disponible.
+      const mejor = productos.find((p) => {
+        const sinStock = p.stock_act !== null && p.stock_act !== undefined && Number(p.stock_act) <= 0;
+        return Number(p.coincidencia || 0) >= 99 && !sinStock;
+      });
+      if (mejor) {
+        item.codigo = mejor.codigo;
+        item.articulo = mejor.descripcion;
+        renderItems(pagina);
+        actualizarContador();
+      }
+    } catch (e) {
+      // Silencioso: si falla el auto-búsqueda, el usuario puede buscar a mano.
+    }
+  }
+}
+
+// "Hacer pedido manual" (09/09, a pedido del usuario): arma una tarjeta
+// vacía con la MISMA tabla de ítems que sale al escanear una nota, para
+// cargar un pedido a mano sin necesidad de una foto. El botón se esconde
+// al usarlo (un solo pedido manual a la vez) y vuelve a aparecer recién
+// cuando se pulsa "Escanear otras notas" (reinicio de la pantalla).
+document.getElementById("boton-pedido-manual").addEventListener("click", () => {
+  document.getElementById("boton-pedido-manual").style.display = "none";
+  paginaGlobalContador++;
+  const resultadoManual = {
+    pagina: paginaGlobalContador,
+    archivo: "Pedido manual",
+    ok: true,
+    campos: { items: [] },
+    motor: "Manual",
+  };
+  ultimosResultados.push(resultadoManual);
+  panelCarga.style.display = "none";
+  panelResultados.style.display = "block";
+  agregarTarjeta(resultadoManual);
+  actualizarContador();
+});
 
 document.getElementById("boton-exportar").addEventListener("click", async () => {
   const respuesta = await fetch("/api/pedidos/exportar_excel", {
@@ -548,14 +2238,291 @@ document.getElementById("boton-exportar").addEventListener("click", async () => 
 
 document.getElementById("boton-nuevo").addEventListener("click", () => {
   panelResultados.style.display = "none";
+  panelCarga.style.display = "";
   mensajeCarga.textContent = "";
   entradaArchivo.value = "";
   ultimosResultados = [];
+  paginaGlobalContador = 0;
+  listaPedidos.innerHTML = "";
+  document.getElementById("boton-pedido-manual").style.display = "flex";
 });
+
+  // ---------------- Historial de cotizaciones creadas ----------------
+
+  const panelHistorial = document.getElementById("panel-historial");
+  let historialCargadoAlMenosUnaVez = false;
+
+function filaHistorial(p) {
+  const fecha = p.fecha_registro ? new Date(p.fecha_registro).toLocaleString("es-VE", { dateStyle: "short", timeStyle: "short" }) : "—";
+  const cliente = p.cliente_nombre
+    ? `<span class="col-cliente"><strong>${escHtml(p.cliente_nombre)}</strong> <span class="cliente-codigo">(${escHtml(p.cod_cliente)})</span></span>`
+    : `<span class="col-cliente"><span class="cliente-codigo">${escHtml(p.cod_cliente || "—")}</span></span>`;
+  const cotizacion = p.numero_cotizacion
+    ? `<span class="cotiz-num">${String(p.numero_cotizacion).split(",").map((n) => "#" + escHtml(n.trim())).join(", ")}</span>`
+    : `<span class="cotiz-num sin-numero">sin número</span>`;
+  // N° Entrega (10/09) y N° Factura (11/09, cambio de plan del usuario):
+  // la nota queda como texto informativo nomás por ahora (sin función —
+  // hasta que haya una API aparte para bajar la nota/proforma propia).
+  // El N° de FACTURA real es el que ahora es clickeable: consulta y abre
+  // la factura de Profit (cadena nota->reng_fac->factura, resuelta del
+  // lado de ARA_PROYECT — acá se pide pasando la nota, que es lo que el
+  // endpoint /api/pedidos/factura-real espera). Un pedido puede tener
+  // varias notas (una por almacén) y cada una con su propia factura, por
+  // eso cada número de factura es su propio botón. El ojo aparte sigue
+  // mostrando el documento ORIGINAL que subió el usuario (la nota/lista
+  // escaneada, ver pedidos_descargar_documento) — es otra cosa.
+  const notasEntrega = p.numero_entrega
+    ? String(p.numero_entrega).split(",").map((n) => n.trim()).filter(Boolean)
+    : [];
+  const facturasReales = p.numero_factura
+    ? String(p.numero_factura).split(",").map((n) => n.trim()).filter(Boolean)
+    : [];
+  const botonDocOriginal = p.tiene_documento
+    ? `<button type="button" class="boton-doc-original boton-preview-entrega" data-id="${p.id}" data-etiqueta="${escHtml(p.numero_entrega || "Documento")}" title="Ver el documento original subido"><i data-lucide="eye" style="width:11px;height:11px;vertical-align:-1px;"></i></button>`
+    : "";
+  // Cada N° de nota es clickeable de nuevo (11/09, ya con la proforma
+  // propia lista — antes quedaba en texto plano porque no había nada
+  // que mostrar al tocarlo). Abre NUESTRA reconstrucción de la nota
+  // (ver bin/generar_proforma_nota.py), no el documento oficial de
+  // Profit (eso todavía no existe de este lado).
+  const botonesNotas = notasEntrega
+    .map((n) => `<button type="button" class="cotiz-num cotiz-num-boton boton-proforma-nota" data-id="${p.id}" data-nota="${escHtml(n)}" title="Ver la proforma de esta nota (reconstrucción propia)">${escHtml(n)}</button>`)
+    .join(" ");
+  const entrega = notasEntrega.length
+    ? `<span class="celda-entrega">${botonesNotas}${botonDocOriginal}</span>`
+    : `<span class="cotiz-num sin-numero">—</span>`;
+  // Cada factura va pareada con su nota en el MISMO orden (ver
+  // servidor_ocr_ps._resolver_facturas) — si todavía no se resolvió
+  // ninguna (recién subido, corre en background unos minutos) sale "—".
+  const factura = facturasReales.length
+    ? facturasReales.map((f, i) => `<button type="button" class="cotiz-num cotiz-num-boton boton-factura-real" data-nota="${escHtml(notasEntrega[i] || notasEntrega[0] || "")}" title="Consultar y abrir la factura real de Profit">${escHtml(f)}</button>`).join(" ")
+    : `<span class="cotiz-num sin-numero">—</span>`;
+  const estadoIcono = p.estado === "enviado"
+    ? `<i data-lucide="check"></i>`
+    : p.estado === "error"
+      ? `<i data-lucide="x"></i>`
+      : p.estado === "anulado"
+        ? `<i data-lucide="ban"></i>`
+        : `<i data-lucide="clock"></i>`;
+  const usuarioHTML = p.subido_por
+    ? escHtml(p.subido_por)
+    : `<span class="col-usuario sin-sesion">sin sesión</span>`;
+  return `
+    <tr>
+      <td class="col-fecha">${fecha}</td>
+      <td>${cliente}</td>
+      <td style="text-align:center;font-weight:600;">${p.total_articulos ?? 0}</td>
+      <td>${cotizacion}</td>
+      <td>${entrega}</td>
+      <td>${factura}</td>
+      <td><span class="estado-pedido ${escHtml(p.estado)}">${estadoIcono} ${escHtml(p.estado)}</span></td>
+      <td class="col-usuario">${usuarioHTML}</td>
+    </tr>`;
+}
+
+// Visor de documento inline en "Ver historial" (10/09) — reubicado acá
+// desde OCR-PS (donde había quedado mal puesto como pestaña "Pedidos").
+// Un solo <iframe> alcanza para PDF e imagen — el navegador ya sabe
+// mostrar cualquiera de los dos con solo apuntarlo a la URL.
+function mostrarPreviewHistorial(id, etiqueta) {
+  const panel = document.getElementById("historial-preview");
+  const iframe = document.getElementById("iframe-preview-historial");
+  const info = document.getElementById("historial-preview-info");
+  iframe.src = `/api/pedidos/${id}/documento`;
+  info.innerHTML = `<i data-lucide="file"></i> ${escHtml(etiqueta || "Documento")}`;
+  panel.style.display = "flex";
+  refrescarIconos();
+}
+
+// Factura real de Profit para una nota puntual (11/09, a pedido
+// explícito del usuario) — distinto de mostrarPreviewHistorial de
+// arriba, que muestra el documento ORIGINAL subido por el usuario. Esto
+// puede tardar unos segundos (Profit + el servidor de PDFs del otro
+// lado), por eso el label avisa "Consultando…" antes de que cargue.
+function mostrarFacturaReal(numeroNota) {
+  const panel = document.getElementById("historial-preview");
+  const iframe = document.getElementById("iframe-preview-historial");
+  const info = document.getElementById("historial-preview-info");
+  info.innerHTML = `<i data-lucide="loader-circle" class="girando"></i> Consultando factura real de la nota ${escHtml(numeroNota)}…`;
+  panel.style.display = "flex";
+  refrescarIconos();
+  iframe.src = `/api/pedidos/factura-real/${encodeURIComponent(numeroNota)}`;
+  iframe.onload = () => {
+    info.innerHTML = `<i data-lucide="file-check"></i> Factura real — nota ${escHtml(numeroNota)}`;
+    refrescarIconos();
+  };
+}
+
+// Proforma PROPIA de una nota puntual (11/09, a pedido explícito del
+// usuario) — distinta de mostrarFacturaReal: esto NO es un documento
+// oficial de Profit (no tenemos acceso a cómo lo arma ni dónde lo
+// guarda), es nuestra reconstrucción a partir de reng_nde + lo que ya
+// guardamos al montar el pedido (ver bin/generar_proforma_nota.py).
+function mostrarProformaNota(pedidoId, numeroNota) {
+  const panel = document.getElementById("historial-preview");
+  const iframe = document.getElementById("iframe-preview-historial");
+  const info = document.getElementById("historial-preview-info");
+  info.innerHTML = `<i data-lucide="loader-circle" class="girando"></i> Armando la proforma de la nota ${escHtml(numeroNota)}…`;
+  panel.style.display = "flex";
+  refrescarIconos();
+  iframe.src = `/api/pedidos/${pedidoId}/proforma-nota/${encodeURIComponent(numeroNota)}`;
+  iframe.onload = () => {
+    info.innerHTML = `<i data-lucide="file-text"></i> Proforma (propia) — nota ${escHtml(numeroNota)}`;
+    refrescarIconos();
+  };
+}
+
+document.getElementById("boton-cerrar-preview-historial").addEventListener("click", () => {
+  document.getElementById("historial-preview").style.display = "none";
+  document.getElementById("iframe-preview-historial").src = "about:blank";
+});
+
+// "Mini dashboard" de historial (14/09, a pedido explícito del usuario:
+// "ver el historial completo... y filtrarlas por día y ejecutivo activo
+// de ese día") — desde/hasta/ejecutivo se filtran del lado del servidor
+// (ver /api/pedidos/historico/lista), no recortando en JavaScript un
+// bloque fijo ya traído — así un día viejo aparece igual aunque haya
+// miles de pedidos más nuevos en el medio.
+async function actualizarHistorialPedidos() {
+  const contador = document.getElementById("contador-historial");
+  const tbody = document.getElementById("cuerpo-tabla-historial");
+  const desde = document.getElementById("filtro-fecha-desde").value;
+  const hasta = document.getElementById("filtro-fecha-hasta").value;
+  const ejecutivo = document.getElementById("filtro-ejecutivo").value;
+  const hayFiltro = Boolean(desde || hasta || ejecutivo);
+  try {
+    const params = new URLSearchParams();
+    if (desde) params.set("desde", desde);
+    if (hasta) params.set("hasta", hasta);
+    if (ejecutivo) params.set("ejecutivo", ejecutivo);
+    const respuesta = await fetch(`/api/pedidos/historico/lista?${params.toString()}`);
+    const datos = await respuesta.json();
+    if (!datos.ok) throw new Error(datos.error || "No se pudo cargar el historial");
+
+    const pedidos = datos.pedidos || [];
+    const textoFiltro = [];
+    if (desde) textoFiltro.push("desde " + new Date(desde).toLocaleDateString("es-VE"));
+    if (hasta) textoFiltro.push("hasta " + new Date(hasta).toLocaleDateString("es-VE"));
+    if (ejecutivo) textoFiltro.push(ejecutivo);
+    document.getElementById("resultado-filtro").textContent = textoFiltro.length
+      ? `${pedidos.length} resultado(s) — ${textoFiltro.join(" · ")}`
+      : "";
+
+    const total = pedidos.length;
+    const enviados = pedidos.filter((p) => p.estado === "enviado").length;
+    const errores = pedidos.filter((p) => p.estado === "error").length;
+    document.getElementById("stat-total").textContent = total;
+    document.getElementById("stat-enviados").textContent = enviados;
+    document.getElementById("stat-errores").textContent = errores;
+
+    tbody.innerHTML = pedidos.length
+      ? pedidos.map(filaHistorial).join("")
+      : `<tr><td colspan="8" class="empty-historial">
+          <i data-lucide="inbox"></i>
+          <p>${hayFiltro ? "No hay pedidos con esos filtros." : "Todavía no se subió ningún pedido."}</p>
+        </td></tr>`;
+
+    contador.textContent = `${pedidos.length} registro(s)${hayFiltro ? "" : " (histórico completo)"}`;
+    refrescarIconos();
+    tbody.querySelectorAll(".boton-preview-entrega").forEach((boton) => {
+      boton.addEventListener("click", () => mostrarPreviewHistorial(boton.dataset.id, boton.dataset.etiqueta));
+    });
+    tbody.querySelectorAll(".boton-factura-real").forEach((boton) => {
+      boton.addEventListener("click", () => mostrarFacturaReal(boton.dataset.nota));
+    });
+    tbody.querySelectorAll(".boton-proforma-nota").forEach((boton) => {
+      boton.addEventListener("click", () => mostrarProformaNota(boton.dataset.id, boton.dataset.nota));
+    });
+  } catch (error) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-historial" style="color:var(--negativa);">
+      <i data-lucide="alert-triangle"></i>
+      <p>Error cargando el historial: ${escHtml(error.message)}</p>
+    </td></tr>`;
+    document.getElementById("stat-total").textContent = "—";
+    document.getElementById("stat-enviados").textContent = "—";
+    document.getElementById("stat-errores").textContent = "—";
+    contador.textContent = "error";
+    refrescarIconos();
+  }
+}
+
+// Selector de ejecutivo (14/09): se repuebla cada vez que cambia el
+// rango de fechas, con SOLO los nombres que subieron algo EN ESE rango
+// (ver /api/pedidos/historico/ejecutivos) — "ejecutivo activo de ese
+// día", no una lista fija de todo el mundo. Si el ejecutivo elegido ya
+// no aparece en el rango nuevo, se resetea a "Todos" en vez de quedar
+// seleccionado un nombre que el <select> ya no tiene como opción.
+async function cargarEjecutivosHistorial() {
+  const select = document.getElementById("filtro-ejecutivo");
+  const elegidoActual = select.value;
+  const desde = document.getElementById("filtro-fecha-desde").value;
+  const hasta = document.getElementById("filtro-fecha-hasta").value;
+  try {
+    const params = new URLSearchParams();
+    if (desde) params.set("desde", desde);
+    if (hasta) params.set("hasta", hasta);
+    const respuesta = await fetch(`/api/pedidos/historico/ejecutivos?${params.toString()}`);
+    const datos = await respuesta.json();
+    const ejecutivos = datos.ok ? (datos.ejecutivos || []) : [];
+    select.innerHTML = `<option value="">Todos</option>` +
+      ejecutivos.map((e) => `<option value="${escHtml(e)}">${escHtml(e)}</option>`).join("");
+    select.value = ejecutivos.includes(elegidoActual) ? elegidoActual : "";
+  } catch (error) {
+    // Silencioso: el selector se queda con lo que ya tenía cargado, no
+    // vale la pena romper el resto del dashboard por esto.
+  }
+}
+
+document.getElementById("boton-ver-historial").addEventListener("click", () => {
+  const abrir = panelHistorial.style.display === "none";
+  panelHistorial.style.display = abrir ? "block" : "none";
+  if (abrir && !historialCargadoAlMenosUnaVez) {
+    historialCargadoAlMenosUnaVez = true;
+    cargarEjecutivosHistorial();
+    actualizarHistorialPedidos();
+  }
+});
+
+document.getElementById("filtro-fecha-desde").addEventListener("change", () => {
+  cargarEjecutivosHistorial();
+  actualizarHistorialPedidos();
+  actualizarBotonLimpiar();
+});
+
+document.getElementById("filtro-fecha-hasta").addEventListener("change", () => {
+  cargarEjecutivosHistorial();
+  actualizarHistorialPedidos();
+  actualizarBotonLimpiar();
+});
+
+document.getElementById("filtro-ejecutivo").addEventListener("change", () => {
+  actualizarHistorialPedidos();
+  actualizarBotonLimpiar();
+});
+
+document.getElementById("boton-limpiar-filtro").addEventListener("click", () => {
+  document.getElementById("filtro-fecha-desde").value = "";
+  document.getElementById("filtro-fecha-hasta").value = "";
+  document.getElementById("filtro-ejecutivo").value = "";
+  document.getElementById("boton-limpiar-filtro").style.display = "none";
+  document.getElementById("resultado-filtro").textContent = "";
+  cargarEjecutivosHistorial();
+  actualizarHistorialPedidos();
+});
+
+function actualizarBotonLimpiar() {
+  const desde = document.getElementById("filtro-fecha-desde").value;
+  const hasta = document.getElementById("filtro-fecha-hasta").value;
+  const ejecutivo = document.getElementById("filtro-ejecutivo").value;
+  document.getElementById("boton-limpiar-filtro").style.display = (desde || hasta || ejecutivo) ? "flex" : "none";
+}
 
 refrescarIconos();
 verificarEstadoOCR();
 actualizarContadorHistorico();
+actualizarContadorEspera();
+cargarSesion();
+document.getElementById("boton-pedido-manual").style.display = "flex";
 </script>
 </body>
 </html>

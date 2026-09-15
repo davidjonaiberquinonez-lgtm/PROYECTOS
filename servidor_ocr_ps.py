@@ -1580,9 +1580,9 @@ def pedidos_estado_historico():
 
 @app.route("/api/pedidos/historico/lista", methods=["GET"])
 def pedidos_lista_historico():
-    """Últimos pedidos subidos (éxito o error) — para el box de historial
-    de cotizaciones creadas en la interfaz. Incluye numero_entrega y
-    tiene_documento.
+    """Historial de pedidos subidos (éxito o error) — para el "mini
+    dashboard" de historial de cotizaciones en la interfaz. Incluye
+    numero_entrega y tiene_documento.
 
     Aislado por usuario (11/09, a pedido explícito del usuario: "no debo
     saber las cotizaciones de otro usuario, excepto la mía") — mismo
@@ -1590,21 +1590,67 @@ def pedidos_lista_historico():
     ve solo lo que subió él mismo. A diferencia de pedidos_en_espera,
     pedidos_ocr no guarda un ID estable de quién subió cada fila (solo
     el nombre, en subido_por) — así que se compara por nombre
-    normalizado (sin mayúsculas/acentos, igual que _es_usuario_global),
-    trayendo un lote más grande de bd_ocr para no perder historial
-    viejo al filtrar."""
+    normalizado (sin mayúsculas/acentos, igual que _es_usuario_global).
+
+    14/09 (a pedido explícito del usuario: "ver el historial completo...
+    y filtrarlas por día y ejecutivo activo de ese día"): `desde`/`hasta`
+    (query params, "YYYY-MM-DD") filtran directo en SQL (ver
+    bd_ocr.listar_pedidos_ocr) en vez de traer un bloque fijo y filtrar
+    en JavaScript — así un día viejo no queda invisible solo por estar
+    fuera del bloque de siempre. `ejecutivo` (query param, opcional) deja
+    elegir a un usuario puntual DENTRO de lo que ya puede ver — el
+    usuario global puede pedir cualquier nombre, uno normal solo puede
+    "elegir" el suyo propio (si pide otro, igual se lo pisa por su
+    propio nombre — nunca se expone la cotización de otro)."""
     usuario = usuario_activo()
     if not usuario:
         return jsonify({"ok": False, "error": "No hay usuario activo"}), 401
     es_global = _es_usuario_global(usuario)
+    desde = (request.args.get("desde") or "").strip() or None
+    hasta = (request.args.get("hasta") or "").strip() or None
+    ejecutivo_pedido = (request.args.get("ejecutivo") or "").strip()
     try:
-        filas = bd_ocr.listar_pedidos_ocr(limite=30 if es_global else 500)
+        # limite alto siempre (no solo con desde/hasta puestos): un usuario
+        # no-global se filtra por nombre DESPUÉS de traer las filas (más
+        # abajo) — con un límite chico, alguien con pocas cotizaciones
+        # propias mezcladas entre muchas de otros ejecutivos se quedaría
+        # sin ver su historial viejo aunque exista en la base.
+        filas = bd_ocr.listar_pedidos_ocr(limite=2000, desde=desde, hasta=hasta)
         if not es_global:
             nombre_normalizado = _normalizar_nombre(usuario.get("nombre") or "")
-            filas = [f for f in filas if _normalizar_nombre(f.get("subido_por") or "") == nombre_normalizado][:30]
+            filas = [f for f in filas if _normalizar_nombre(f.get("subido_por") or "") == nombre_normalizado]
+        elif ejecutivo_pedido:
+            ejecutivo_normalizado = _normalizar_nombre(ejecutivo_pedido)
+            filas = [f for f in filas if _normalizar_nombre(f.get("subido_por") or "") == ejecutivo_normalizado]
     except Exception as error:
         return jsonify({"ok": False, "error": str(error)}), 502
     return jsonify({"ok": True, "pedidos": filas, "es_global": es_global})
+
+
+@app.route("/api/pedidos/historico/ejecutivos", methods=["GET"])
+def pedidos_historico_ejecutivos():
+    """Nombres de ejecutivos con al menos un pedido subido en el rango de
+    fechas dado (14/09, a pedido explícito del usuario) — para llenar el
+    selector del "mini dashboard" con solo quienes estuvieron activos
+    ESE día, no una lista fija de todos los usuarios que existieron. Un
+    usuario no-global recibe solo su propio nombre (si tiene algo en el
+    rango) — nunca la lista completa, mismo criterio de aislamiento que
+    /api/pedidos/historico/lista."""
+    usuario = usuario_activo()
+    if not usuario:
+        return jsonify({"ok": False, "error": "No hay usuario activo"}), 401
+    desde = (request.args.get("desde") or "").strip() or None
+    hasta = (request.args.get("hasta") or "").strip() or None
+    try:
+        if _es_usuario_global(usuario):
+            ejecutivos = bd_ocr.listar_ejecutivos_pedidos_ocr(desde=desde, hasta=hasta)
+        else:
+            propios = bd_ocr.listar_ejecutivos_pedidos_ocr(desde=desde, hasta=hasta)
+            nombre_normalizado = _normalizar_nombre(usuario.get("nombre") or "")
+            ejecutivos = [e for e in propios if _normalizar_nombre(e) == nombre_normalizado]
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)}), 502
+    return jsonify({"ok": True, "ejecutivos": ejecutivos})
 
 
 @app.route("/api/pedidos/<int:pedido_id>/documento", methods=["GET"])
