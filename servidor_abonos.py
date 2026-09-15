@@ -142,7 +142,7 @@ def menu():
 
 @app.route("/api/estado-ocr", methods=["GET"])
 def estado_ocr():
-    cadena_respaldo = []
+    cadena_respaldo = [f"{ocr.MODELO_VISION_DEEPSEEK} (DeepSeek)"]
     if ocr.clave_google:
         cadena_respaldo.append(f"{ocr.MODELO_VISION} (Gemini)")
     if ocr.clave_openrouter:
@@ -150,9 +150,9 @@ def estado_ocr():
     return jsonify({
         "conectado": True,
         "detalle": {
-            "modelo_vision": ocr.MODELO_VISION_DEEPSEEK,
-            "proveedor": "DeepSeek",
-            "respaldo": " → ".join(cadena_respaldo) if cadena_respaldo else None,
+            "modelo_vision": ocr.MODELO_VISION_QWEN,
+            "proveedor": "Qwen-VL (local)",
+            "respaldo": " → ".join(cadena_respaldo),
         },
     })
 
@@ -381,6 +381,11 @@ def reiniciar_historico():
 
 
 if __name__ == "__main__":
+    from waitress import serve
+
     puerto = int(os.environ.get("PUERTO_ABONOS", 5040))
-    print(f"Escáner de recibos de cobro (abonos) — modelo principal: {ocr.MODELO_VISION_DEEPSEEK} (DeepSeek), respaldo: {ocr.MODELO_VISION} (Gemini)")
-    app.run(host="0.0.0.0", port=puerto, debug=True, threaded=True, use_reloader=False)
+    print(f"Escáner de recibos de cobro (abonos) — modelo principal: {ocr.MODELO_VISION_QWEN} (Qwen-VL local), respaldo: {ocr.MODELO_VISION_DEEPSEEK} (DeepSeek) -> {ocr.MODELO_VISION} (Gemini)")
+    # Waitress (servidor WSGI de producción) en vez del server de desarrollo
+    # de Flask — este panel lo usa más de una persona a la vez (04/09).
+    print(f"Sirviendo con Waitress en el puerto {puerto}…")
+    serve(app, host="0.0.0.0", port=puerto, threads=14)

@@ -33,6 +33,8 @@ import pymupdf
 import requests
 from dotenv import load_dotenv
 
+from bin.evaluar_legibilidad import evaluar_legibilidad
+
 load_dotenv()
 
 # ---------------------------------------------------------------------------
@@ -50,9 +52,26 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODELO_VISION_OPENROUTER = os.environ.get("MODELO_VISION_OPENROUTER", "dots-studio/dots-3-note-preview:free")
 clave_openrouter = os.environ.get("OPENROUTER_API_KEY")
 
+# NVIDIA NIM Vision (11/09, reemplaza a DeepSeek en la cadena de respaldo
+# — DeepSeek se quedó sin saldo en la cuenta, "402 Insufficient Balance"
+# confirmado en vivo, a pedido explícito del usuario). Mismas 5 llaves
+# que ya usa ARA_PROYECT para esto mismo (ara_vision.py).
+NVIDIA_NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+MODELO_VISION_NVIDIA = os.environ.get("MODELO_VISION_NVIDIA", "meta/llama-3.2-11b-vision-instruct")
+CLAVES_NVIDIA = [os.environ.get(f"NVIDIA_API_KEY_{i}") for i in range(1, 6)]
+CLAVES_NVIDIA = [clave for clave in CLAVES_NVIDIA if clave]
+
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 MODELO_VISION_DEEPSEEK = os.environ.get("MODELO_VISION_DEEPSEEK", "deepseek-v4-flash-vision-exp")
 clave_deepseek = os.environ.get("DEEPSEEK_API_KEY")
+
+# Motor principal (03/09): Qwen3-VL-30B-A3B servido local en LAN (vLLM,
+# compatible OpenAI, sin autenticación) — sin costo por token ni
+# rate-limit de nube, por eso va de primero. Si el servidor local no
+# responde, cae a DeepSeek -> Gemini -> OpenRouter igual que antes.
+QWEN_VL_BASE_URL = os.environ.get("QWEN_VL_BASE_URL", "http://192.168.4.4:8001/v1")
+QWEN_VL_URL = f"{QWEN_VL_BASE_URL}/chat/completions"
+MODELO_VISION_QWEN = os.environ.get("MODELO_VISION_QWEN", "Qwen2.5-VL-7B")
 
 EXTENSIONES_IMAGEN = {"png", "jpg", "jpeg", "webp", "bmp"}
 EXTENSIONES_PERMITIDAS = EXTENSIONES_IMAGEN | {"pdf"}
@@ -62,7 +81,7 @@ EXTENSIONES_PERMITIDAS = EXTENSIONES_IMAGEN | {"pdf"}
 # PDF -> imágenes (una por página)
 # ---------------------------------------------------------------------------
 
-def pdf_a_imagenes(contenido_pdf, dpi=200):
+def pdf_a_imagenes(contenido_pdf, dpi=300):
     """Convierte cada página de un PDF a una imagen PNG (bytes)."""
     documento = pymupdf.open(stream=contenido_pdf, filetype="pdf")
     zoom = dpi / 72
@@ -85,23 +104,72 @@ class ErrorOCR(Exception):
     pass
 
 
-PROMPT_SISTEMA = """Actúa como un sistema de OCR ultra enfocado. Tu único trabajo es encontrar el NÚMERO DE FACTURA en la imagen de una factura de compra (de un proveedor de productos psicotrópicos/farmacéuticos) y devolverlo — nada más.
+PROMPT_SISTEMA = """Actúa como un sistema de OCR ultra enfocado. Tu único trabajo es extraer datos de una factura de compra de productos psicotrópicos/farmacéuticos.
 
-DÓNDE BUSCAR: el número de factura suele estar cerca de las palabras "Factura", "Factura N°", "Nro. Factura", "Invoice", "N° de Control" (si hay varios números parecidos, el de "N° de Control" NO es el que buscas — preferí el que esté etiquetado como "Factura"). Es casi siempre la referencia numérica más prominente arriba del documento, junto al logo o encabezado del proveedor.
+## 1. NÚMERO DE FACTURA/DOCUMENTO (campo: numero_factura)
+Buscá el número de FACTURA o DOCUMENTO.
 
-REGLAS:
-1. Devuelve el número de factura como un ENTERO, sin ceros a la izquierda, sin guiones, puntos ni espacios (ej. si en la factura dice "N° 00174857" o "174.857", el valor es 174857).
-2. Si hay letras o un prefijo pegado al número (ej. "A-00174857" o "FAC-174857"), devuelve solo la parte numérica.
-3. Si genuinamente no encontrás ningún número de factura en la imagen, usa null — no inventes ni adivines un número.
+⚠️  ADVERTENCIA CRÍTICA ⚠️
+Estos SÍ son válidos (buscá cualquiera):
+- "N° Factura" / "Factura N°" / "Nro. Factura" / "Numero de Factura"
+- "N° Documento" / "Documento N°" / "Nro. Documento" / "Numero de Documento" / "DOCUMENTO:"
 
-FORMATO DE SALIDA:
-Devuelve ÚNICAMENTE un objeto JSON válido con esta forma exacta, sin texto adicional, sin bloques de código markdown (```json) y sin explicaciones:
+Estos NO son válidos (ignorarlos):
+- "N° Control" / "Control N°" / "Numero de Control" → NO
+- "N° Comprobante" / "Numero de Comprobante" → NO
+- "Forma Libre" / "N° Forma Libre" → NO
+
+⚠️ ERROR REAL MÁS FRECUENTE (encontrado en vivo con facturas de Megalabs y
+similares): en la esquina superior derecha suele imprimirse primero, en
+letra GRANDE y a veces en rojo, algo como "FORMA LIBRE — N° DE CONTROL:
+00-293932" — ESE NO ES el número que buscás, aunque sea el más grande y
+llamativo de la página. El número correcto está un poco más abajo, casi
+siempre en un recuadro más chico junto a la fecha, etiquetado
+"DOCUMENTO:" (ej. "DOCUMENTO: 404834"). Regla práctica: si ves DOS
+números distintos en el encabezado, uno junto a "N° DE CONTROL" (grande,
+arriba del todo) y otro junto a "DOCUMENTO" o "FACTURA" (más abajo, cerca
+de la fecha), el que corresponde a "numero_factura" es el de
+"DOCUMENTO"/"FACTURA", NUNCA el de "N° DE CONTROL" — sin importar cuál se
+vea más grande o más prominente.
+
+Si el documento tiene bloques separados ("Agente de Retención" vs "Proveedor"), el número está en el bloque del PROVEEDOR.
+
+DÓNDE BUSCAR: arriba del documento, junto al encabezado del proveedor.
+
+REGLAS para el número:
+1. Devuelve solo los DÍGITOS, sin ceros a la izquierda, sin guiones, puntos ni espacios. Ej: "002540944" → 2540944, "254.094" → 254094.
+2. Si hay prefijo alfanumérico (ej. "A-00174857"), devolvé solo la parte numérica.
+3. Si no encontrás un número claro de factura o documento, usá null.
+
+## 2. NÚMEROS DE LOTE (campo: lotes)
+Buscá TODOS los números de lote que aparezcan en la factura. Los lotes suelen estar en la tabla de detalle (ítems/artículos) en columnas llamadas "N° Lote", "Lote", "Nro. Lote", "Lote N°", "No. Lote", "Lote Fab.", "Lote de Fabricación", "N° de Lote", o simplemente "LOTE" (columna angosta, entre "DESCRIPCION" y "VCTO."/"CANT.").
+
+⚠️ NO TE SALTEES ESTA TABLA: la columna "LOTE" suele traer valores CORTOS
+(3-4 dígitos, ej. "0031", "0012", "0052") que a simple vista pueden
+parecer poco importantes al lado de columnas más anchas como
+"DESCRIPCION" o "PRECIO" — igual hay que leerlos, UNO POR CADA FILA de la
+tabla, aunque la hoja tenga sellos, marcas de agua o logos de fondo que
+tapen un poco el número. Si la tabla tiene 5 artículos, tiene que haber
+hasta 5 lotes en la lista (uno por fila que sí traiga lote visible) — no
+te conformes con devolver la lista vacía sin haber revisado cada fila.
+
+REGLAS para los lotes:
+1. Cada lote es un código alfanumérico (ej. "A2231", "78B456", "LOT-001", "12345-AB", "0031").
+2. Devolvé SOLO el valor del lote, sin la etiqueta "Lote" o "N°".
+3. Buscá en TODA la tabla de detalle — cada artículo puede tener su propio lote.
+4. Si de verdad no hay ninguna columna de lote en el documento (revisaste cada fila y ninguna trae lote), devolvé un arreglo vacío [].
+
+## FORMATO DE SALIDA
+Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, sin bloques de código markdown, sin explicaciones:
 {
-  "numero_factura": 174857
+  "numero_factura": 174857,
+  "lotes": ["A2231", "B4456", "78C901"]
 }
-Si no se encuentra el número, usa: {"numero_factura": null}"""
+Si no hay número de factura: {"numero_factura": null, "lotes": []}
+Si hay factura pero sin lotes: {"numero_factura": 174857, "lotes": []}
+"""
 
-CAMPOS_ESPERADOS = ("numero_factura",)
+CAMPOS_ESPERADOS = ("numero_factura", "lotes")
 
 
 def _extraer_json(texto):
@@ -120,7 +188,7 @@ def _normalizar_clave(clave):
 
 def _a_numero_factura(valor):
     """Tolera que el modelo devuelva el número como int, como string
-    ("174857", "N° 174857", "174.857") o con basura alrededor — se queda
+    ("174857", "N° 174857", "174.857") o con basura alrededor - se queda
     solo con los dígitos. Vacío/no numérico -> None, nunca un error que
     tumbe el resto de la extracción."""
     if valor is None:
@@ -136,7 +204,25 @@ def _mapear_campos(datos):
     nombre de clave (mismo criterio que los otros módulos de OCR)."""
     normalizado = {_normalizar_clave(clave): valor for clave, valor in datos.items()}
     crudo = normalizado.get(_normalizar_clave("numero_factura"))
-    return {"numero_factura": _a_numero_factura(crudo)}
+    resultado = {"numero_factura": _a_numero_factura(crudo)}
+
+    # Lotes: el modelo devuelve un array de strings
+    lotes_crudos = normalizado.get(_normalizar_clave("lotes"), [])
+    if isinstance(lotes_crudos, list):
+        lotes = []
+        for l in lotes_crudos:
+            lote_str = str(l).strip().strip('"').strip("'")
+            # Limpiar etiquetas comunes que el modelo a veces incluye
+            for prefijo in ("lote", "n", "no", "n°", "nº", "lot"):
+                if lote_str.upper().startswith(prefijo.upper()):
+                    lote_str = lote_str[len(prefijo):].strip().strip("- ").strip()
+            if lote_str:
+                lotes.append(lote_str)
+        resultado["lotes"] = lotes
+    else:
+        resultado["lotes"] = []
+
+    return resultado
 
 
 def consultar_vision_google(imagen_bytes):
@@ -222,6 +308,47 @@ def consultar_vision_openrouter(imagen_bytes):
     return campos, texto
 
 
+def consultar_vision_nvidia_nim(imagen_bytes):
+    """NVIDIA NIM Vision — respaldo si Qwen-VL local no responde (11/09,
+    reemplaza a DeepSeek). Prueba cada key del pool en orden; si una
+    devuelve 401/403/429/503 (o falla la conexión), pasa a la
+    siguiente sin gastar más tiempo en esa key."""
+    if not CLAVES_NVIDIA:
+        raise ErrorOCR("No hay ninguna NVIDIA_API_KEY_1..5 configurada")
+    b64 = base64.b64encode(imagen_bytes).decode()
+    payload = {
+        "model": MODELO_VISION_NVIDIA,
+        "temperature": 0.0,
+        "max_tokens": 2048,
+        "messages": [
+            {"role": "system", "content": PROMPT_SISTEMA},
+            {"role": "user", "content": [
+                {"type": "text", "text": "Extrae el número de factura de esta imagen siguiendo exactamente las reglas. Responde solo con el JSON, nada más."},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+            ]},
+        ],
+    }
+    ultimo_error = None
+    for clave in CLAVES_NVIDIA:
+        try:
+            respuesta = requests.post(NVIDIA_NIM_URL, json=payload, headers={"Authorization": f"Bearer {clave}"}, timeout=30)
+            if respuesta.status_code in (401, 403, 429, 503):
+                ultimo_error = f"HTTP {respuesta.status_code}"
+                continue
+            respuesta.raise_for_status()
+            texto = respuesta.json()["choices"][0]["message"]["content"]
+            if not texto:
+                ultimo_error = "sin contenido"
+                continue
+            datos = _extraer_json(texto)
+            campos = _mapear_campos(datos)
+            return campos, texto
+        except Exception as error:
+            ultimo_error = error
+            continue
+    raise ErrorOCR(f"NVIDIA NIM Vision falló (todas las keys del pool): {ultimo_error}")
+
+
 def consultar_vision_deepseek(imagen_bytes):
     if not clave_deepseek:
         raise ErrorOCR("No hay DEEPSEEK_API_KEY configurada")
@@ -279,30 +406,75 @@ def consultar_vision_deepseek(imagen_bytes):
     return campos, texto
 
 
-def consultar_vision(imagen_bytes):
-    """DeepSeek primero (más barato); si falla o no está configurado, se
-    reintenta con Gemini, y si ese también falla, con OpenRouter. `motor`
-    en el resultado indica cuál de los tres respondió.
-
-    TEMPORAL: si la precisión de DeepSeek en este número clave no
-    convence, volver a poner a Gemini primero."""
+def consultar_vision_qwen(imagen_bytes):
+    """Qwen3-VL-30B-A3B servido local en LAN (vLLM, compatible OpenAI,
+    sin autenticación) — motor principal desde el 03/09. Timeout más largo
+    que los motores en la nube (90s en vez de 60s): es hardware propio
+    compartido, así que se le da más margen antes de pasar a DeepSeek."""
+    b64 = base64.b64encode(imagen_bytes).decode()
+    payload = {
+        "model": MODELO_VISION_QWEN,
+        "temperature": 0.0,
+        "max_tokens": 2048,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": PROMPT_SISTEMA},
+            {"role": "user", "content": [
+                {"type": "text", "text": "Extrae el número de factura de esta imagen siguiendo exactamente las reglas. Responde solo con el JSON, nada más."},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+            ]},
+        ],
+    }
     try:
-        campos, texto = consultar_vision_deepseek(imagen_bytes)
-        return campos, texto, "DeepSeek"
-    except ErrorOCR as error_deepseek:
+        respuesta = requests.post(QWEN_VL_URL, json=payload, timeout=90)
+        respuesta.raise_for_status()
+        cuerpo = respuesta.json()
+        mensaje = cuerpo["choices"][0]["message"]
+        # Bug real encontrado en vivo (08/09): al relanzar el VL MoE en la
+        # GDX, esta instancia de vLLM empezó a mandar la respuesta entera
+        # dentro de "reasoning" (content queda null) — antes no hacía esto.
+        texto = mensaje.get("content") or mensaje.get("reasoning") or ""
+    except Exception as error:
+        raise ErrorOCR(f"Qwen-VL local falló: {error}") from error
+
+    if not texto:
+        raise ErrorOCR("Qwen-VL local no devolvió contenido")
+
+    datos = _extraer_json(texto)
+    campos = _mapear_campos(datos)
+    return campos, texto
+
+
+def consultar_vision(imagen_bytes):
+    """Qwen-VL local primero (sin costo por token ni rate-limit de nube);
+    si el servidor local no responde, se reintenta con NVIDIA NIM
+    Vision (11/09, reemplaza a DeepSeek — sin saldo en la cuenta),
+    después Gemini, y si ese también falla, con OpenRouter. `motor` en
+    el resultado indica cuál de los cuatro respondió."""
+    try:
+        campos, texto = consultar_vision_qwen(imagen_bytes)
+        return campos, texto, "Qwen-VL (local)"
+    except ErrorOCR as error_qwen:
         try:
-            campos, texto = consultar_vision_google(imagen_bytes)
-            return campos, texto, "Gemini (respaldo)"
-        except ErrorOCR as error_gemini:
+            campos, texto = consultar_vision_nvidia_nim(imagen_bytes)
+            return campos, texto, "NVIDIA NIM (respaldo)"
+        except ErrorOCR as error_nim:
             try:
-                campos, texto = consultar_vision_openrouter(imagen_bytes)
-                return campos, texto, "OpenRouter (respaldo)"
-            except ErrorOCR as error_openrouter:
-                raise ErrorOCR(f"{error_deepseek} — {error_gemini} — {error_openrouter}") from error_openrouter
+                campos, texto = consultar_vision_google(imagen_bytes)
+                return campos, texto, "Gemini (respaldo)"
+            except ErrorOCR as error_gemini:
+                try:
+                    campos, texto = consultar_vision_openrouter(imagen_bytes)
+                    return campos, texto, "OpenRouter (respaldo)"
+                except ErrorOCR as error_openrouter:
+                    raise ErrorOCR(f"{error_qwen} — {error_nim} — {error_gemini} — {error_openrouter}") from error_openrouter
 
 
 def procesar_imagen(imagen_bytes, nombre_archivo, numero_pagina):
-    resultado_pagina = {"pagina": numero_pagina, "archivo": nombre_archivo, "ok": False}
+    resultado_pagina = {
+        "pagina": numero_pagina, "archivo": nombre_archivo, "ok": False,
+        "legibilidad": evaluar_legibilidad(imagen_bytes),
+    }
     try:
         campos, texto_crudo, motor = consultar_vision(imagen_bytes)
     except ErrorOCR as error:

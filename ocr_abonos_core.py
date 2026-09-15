@@ -46,6 +46,8 @@ import pymupdf
 import requests
 from dotenv import load_dotenv
 
+from bin.evaluar_legibilidad import evaluar_legibilidad
+
 load_dotenv()
 
 # ---------------------------------------------------------------------------
@@ -63,9 +65,26 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODELO_VISION_OPENROUTER = os.environ.get("MODELO_VISION_OPENROUTER", "dots-studio/dots-3-note-preview:free")
 clave_openrouter = os.environ.get("OPENROUTER_API_KEY")
 
+# NVIDIA NIM Vision (11/09, reemplaza a DeepSeek en la cadena de respaldo
+# — DeepSeek se quedó sin saldo en la cuenta, "402 Insufficient Balance"
+# confirmado en vivo, a pedido explícito del usuario). Mismas 5 llaves
+# que ya usa ARA_PROYECT para esto mismo (ara_vision.py).
+NVIDIA_NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+MODELO_VISION_NVIDIA = os.environ.get("MODELO_VISION_NVIDIA", "meta/llama-3.2-11b-vision-instruct")
+CLAVES_NVIDIA = [os.environ.get(f"NVIDIA_API_KEY_{i}") for i in range(1, 6)]
+CLAVES_NVIDIA = [clave for clave in CLAVES_NVIDIA if clave]
+
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 MODELO_VISION_DEEPSEEK = os.environ.get("MODELO_VISION_DEEPSEEK", "deepseek-v4-flash-vision-exp")
 clave_deepseek = os.environ.get("DEEPSEEK_API_KEY")
+
+# Motor principal (03/09): Qwen3-VL-30B-A3B servido local en LAN (vLLM,
+# compatible OpenAI, sin autenticación) — sin costo por token ni
+# rate-limit de nube, por eso va de primero. Si el servidor local no
+# responde, cae a DeepSeek -> Gemini -> OpenRouter igual que antes.
+QWEN_VL_BASE_URL = os.environ.get("QWEN_VL_BASE_URL", "http://192.168.4.4:8001/v1")
+QWEN_VL_URL = f"{QWEN_VL_BASE_URL}/chat/completions"
+MODELO_VISION_QWEN = os.environ.get("MODELO_VISION_QWEN", "Qwen2.5-VL-7B")
 
 EXTENSIONES_IMAGEN = {"png", "jpg", "jpeg", "webp", "bmp"}
 EXTENSIONES_PERMITIDAS = EXTENSIONES_IMAGEN | {"pdf"}
@@ -75,8 +94,12 @@ EXTENSIONES_PERMITIDAS = EXTENSIONES_IMAGEN | {"pdf"}
 # PDF -> imágenes (una por página)
 # ---------------------------------------------------------------------------
 
-def pdf_a_imagenes(contenido_pdf, dpi=200):
-    """Convierte cada página de un PDF a una imagen PNG (bytes)."""
+def pdf_a_imagenes(contenido_pdf, dpi=300):
+    """Convierte cada página de un PDF a una imagen PNG (bytes).
+
+    dpi=300 (09/09, subido desde 200, ver ocr_retenciones_core.py): más
+    resolución al renderizar le da al modelo más detalle para leer
+    números chicos."""
     documento = pymupdf.open(stream=contenido_pdf, filetype="pdf")
     zoom = dpi / 72
     matriz = pymupdf.Matrix(zoom, zoom)
@@ -295,6 +318,47 @@ def consultar_vision_openrouter(imagen_bytes):
     return campos, texto
 
 
+def consultar_vision_nvidia_nim(imagen_bytes):
+    """NVIDIA NIM Vision — respaldo si Qwen-VL local no responde (11/09,
+    reemplaza a DeepSeek). Prueba cada key del pool en orden; si una
+    devuelve 401/403/429/503 (o falla la conexión), pasa a la
+    siguiente sin gastar más tiempo en esa key."""
+    if not CLAVES_NVIDIA:
+        raise ErrorOCR("No hay ninguna NVIDIA_API_KEY_1..5 configurada")
+    b64 = base64.b64encode(imagen_bytes).decode()
+    payload = {
+        "model": MODELO_VISION_NVIDIA,
+        "temperature": 0.0,
+        "max_tokens": 2048,
+        "messages": [
+            {"role": "system", "content": PROMPT_SISTEMA},
+            {"role": "user", "content": [
+                {"type": "text", "text": "Extrae los 10 campos y los 2 puntajes de confianza de esta imagen siguiendo exactamente las reglas. Responde solo con el JSON, nada más."},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+            ]},
+        ],
+    }
+    ultimo_error = None
+    for clave in CLAVES_NVIDIA:
+        try:
+            respuesta = requests.post(NVIDIA_NIM_URL, json=payload, headers={"Authorization": f"Bearer {clave}"}, timeout=30)
+            if respuesta.status_code in (401, 403, 429, 503):
+                ultimo_error = f"HTTP {respuesta.status_code}"
+                continue
+            respuesta.raise_for_status()
+            texto = respuesta.json()["choices"][0]["message"]["content"]
+            if not texto:
+                ultimo_error = "sin contenido"
+                continue
+            datos = _extraer_json(texto)
+            campos = _mapear_campos(datos)
+            return campos, texto
+        except Exception as error:
+            ultimo_error = error
+            continue
+    raise ErrorOCR(f"NVIDIA NIM Vision falló (todas las keys del pool): {ultimo_error}")
+
+
 def consultar_vision_deepseek(imagen_bytes):
     if not clave_deepseek:
         raise ErrorOCR("No hay DEEPSEEK_API_KEY configurada")
@@ -352,28 +416,68 @@ def consultar_vision_deepseek(imagen_bytes):
     return campos, texto
 
 
-def consultar_vision(imagen_bytes):
-    """DeepSeek primero (más barato); si falla o no está configurado, se
-    reintenta con Gemini, y si ese también falla, con OpenRouter. `motor`
-    en el resultado indica cuál de los tres respondió.
-
-    TEMPORAL: DeepSeek recién estrenó visión (deepseek-v4-flash-vision-exp,
-    21/08/2026) y comprime cada imagen a ~800x800px/384 tokens antes de
-    leerla — en letra manuscrita chica puede rendir peor que Gemini. Si la
-    precisión no convence, volver a poner a Gemini primero."""
+def consultar_vision_qwen(imagen_bytes):
+    """Qwen3-VL-30B-A3B servido local en LAN (vLLM, compatible OpenAI,
+    sin autenticación) — motor principal desde el 03/09. Timeout más largo
+    que los motores en la nube (90s en vez de 60s): es hardware propio
+    compartido, así que se le da más margen antes de pasar a DeepSeek."""
+    b64 = base64.b64encode(imagen_bytes).decode()
+    payload = {
+        "model": MODELO_VISION_QWEN,
+        "temperature": 0.0,
+        "max_tokens": 8192,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": PROMPT_SISTEMA},
+            {"role": "user", "content": [
+                {"type": "text", "text": "Extrae los 10 campos y los 2 puntajes de confianza de esta imagen siguiendo exactamente las reglas. Responde solo con el JSON, nada más."},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+            ]},
+        ],
+    }
     try:
-        campos, texto = consultar_vision_deepseek(imagen_bytes)
-        return campos, texto, "DeepSeek"
-    except ErrorOCR as error_deepseek:
+        respuesta = requests.post(QWEN_VL_URL, json=payload, timeout=90)
+        respuesta.raise_for_status()
+        cuerpo = respuesta.json()
+        mensaje = cuerpo["choices"][0]["message"]
+        # Bug real encontrado en vivo (08/09): al relanzar el VL MoE en la
+        # GDX, esta instancia de vLLM empezó a mandar la respuesta entera
+        # dentro de "reasoning" (content queda null) — antes no hacía esto.
+        texto = mensaje.get("content") or mensaje.get("reasoning") or ""
+    except Exception as error:
+        raise ErrorOCR(f"Qwen-VL local falló: {error}") from error
+
+    if not texto:
+        raise ErrorOCR("Qwen-VL local no devolvió contenido")
+
+    datos = _extraer_json(texto)
+    campos = _mapear_campos(datos)
+    return campos, texto
+
+
+def consultar_vision(imagen_bytes):
+    """Qwen-VL local primero (sin costo por token ni rate-limit de nube);
+    si el servidor local no responde, se reintenta con NVIDIA NIM
+    Vision (11/09, reemplaza a DeepSeek — sin saldo en la cuenta),
+    después Gemini, y si ese también falla, con OpenRouter. `motor` en
+    el resultado indica cuál de los cuatro respondió."""
+    try:
+        campos, texto = consultar_vision_qwen(imagen_bytes)
+        return campos, texto, "Qwen-VL (local)"
+    except ErrorOCR as error_qwen:
         try:
-            campos, texto = consultar_vision_google(imagen_bytes)
-            return campos, texto, "Gemini (respaldo)"
-        except ErrorOCR as error_gemini:
+            campos, texto = consultar_vision_nvidia_nim(imagen_bytes)
+            return campos, texto, "NVIDIA NIM (respaldo)"
+        except ErrorOCR as error_nim:
             try:
-                campos, texto = consultar_vision_openrouter(imagen_bytes)
-                return campos, texto, "OpenRouter (respaldo)"
-            except ErrorOCR as error_openrouter:
-                raise ErrorOCR(f"{error_deepseek} — {error_gemini} — {error_openrouter}") from error_openrouter
+                campos, texto = consultar_vision_google(imagen_bytes)
+                return campos, texto, "Gemini (respaldo)"
+            except ErrorOCR as error_gemini:
+                try:
+                    campos, texto = consultar_vision_openrouter(imagen_bytes)
+                    return campos, texto, "OpenRouter (respaldo)"
+                except ErrorOCR as error_openrouter:
+                    raise ErrorOCR(f"{error_qwen} — {error_nim} — {error_gemini} — {error_openrouter}") from error_openrouter
 
 
 def calcular_confianza(campos):
@@ -396,7 +500,13 @@ def calcular_confianza(campos):
 
 
 def procesar_imagen(imagen_bytes, nombre_archivo, numero_pagina):
-    resultado_pagina = {"pagina": numero_pagina, "archivo": nombre_archivo, "ok": False}
+    # Puntaje de legibilidad (09/09, sin IA — ver bin/evaluar_legibilidad.py):
+    # se calcula SIEMPRE, incluso si la extracción falla, para poder avisar
+    # cuándo conviene revisar el documento original contra lo que salió.
+    resultado_pagina = {
+        "pagina": numero_pagina, "archivo": nombre_archivo, "ok": False,
+        "legibilidad": evaluar_legibilidad(imagen_bytes),
+    }
     try:
         campos, texto_crudo, motor = consultar_vision(imagen_bytes)
     except ErrorOCR as error:
