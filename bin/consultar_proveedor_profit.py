@@ -46,6 +46,11 @@ PROFIT_PORT = os.environ.get("PROFIT_SQL_PORT", "1433")
 PROFIT_DB = os.environ.get("PROFIT_SQL_NAME", "CRISTM25")
 PROFIT_USER = os.environ.get("PROFIT_SQL_USER", "profit")
 PROFIT_PASS = os.environ.get("PROFIT_SQL_PASS", "profit")
+# "SQL Server" es el nombre del driver ODBC integrado de Windows. En Linux
+# (contenedores Docker) el driver de Microsoft se registra con otro nombre
+# ("ODBC Driver 18 for SQL Server") — configurable acá para no romper el
+# despliegue original en Windows, ver PROFIT_ODBC_DRIVER en docker-compose.
+PROFIT_ODBC_DRIVER = os.environ.get("PROFIT_ODBC_DRIVER", "SQL Server")
 
 CONNECT_TIMEOUT_S = 6
 MAX_INTENTOS = 3
@@ -66,7 +71,7 @@ def _es_error_reintentable(exc: Exception) -> bool:
 
 def _conectar() -> pyodbc.Connection:
     return pyodbc.connect(
-        f"DRIVER={{SQL Server}};SERVER={PROFIT_HOST},{PROFIT_PORT};DATABASE={PROFIT_DB};"
+        f"DRIVER={{{PROFIT_ODBC_DRIVER}}};SERVER={PROFIT_HOST},{PROFIT_PORT};DATABASE={PROFIT_DB};"
         f"UID={PROFIT_USER};PWD={PROFIT_PASS};Connection Timeout={CONNECT_TIMEOUT_S}",
         timeout=CONNECT_TIMEOUT_S,
     )

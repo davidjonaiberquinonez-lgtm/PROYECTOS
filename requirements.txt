@@ -5,3 +5,12 @@ pymupdf==1.28.2
 requests==2.33.0
 pyodbc==5.2.0
 pymysql==1.2.0
+waitress==3.0.2
+PyJWT==2.13.0
+rapidfuzz==3.14.6
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.0+cpu
+torchaudio==2.11.0+cpu
+openai-whisper==20250625
+numpy==2.4.6
+reportlab==5.0.1

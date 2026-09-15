@@ -1,0 +1,62 @@
+dos métodos manuales para obtener la Base Imponible y la Retención de IVA al 75% según si la factura incluye o no conceptos exentos/no gravados (CSDAC.IVA).
+
+1. Caso "Regla sin CSDAC.IVA" (Factura 100% gravada)
+
+Se utiliza cuando la factura no tiene compras sin derecho a crédito fiscal (exento).
+
+Fórmula:
+
+Base Imponible= 
+1,16
+Total Servicios y Compras con IVA
+​
+ 
+Impuesto IVA=Base Imponible×0,16
+IVA Retenido=Impuesto IVA×0,75
+Ejemplo paso a paso:
+
+Dividir el Total con IVA entre 1,16:
+
+1,16
+8.309,11
+​
+ =7.163,03(Base Imponible)
+Multiplicar la Base Imponible por el 16% de IVA:
+
+7.163,03×0,16=1.146,08(Impuesto IVA)
+Aplicar el 75% de retención:
+
+1.146,08×0,75=859,56(IVA Retenido)
+2. Caso "Regla con CSDAC.IVA" (Factura mixta / con exento)
+
+Se utiliza cuando una factura incluye un monto exento/no gravado. Aquí es donde salían los 9.722,73 que estabas buscando.
+
+Fórmula:
+
+Base Imponible= 
+1,16
+Total con IVA−Compras sin Derecho a Cr 
+e
+ˊ
+ dito IVA
+​
+ 
+Impuesto IVA=Base Imponible×0,16
+IVA Retenido=Impuesto IVA×0,75
+Ejemplo paso a paso:
+
+Restar la compra sin derecho a crédito al total con IVA:
+
+50.841,90−39.563,55=11.278,35
+Dividir ese resultado entre 1,16 para limpiar el IVA:
+
+1,16
+11.278,35
+​
+ =9.722,73(Base Imponible)
+Sacar el 16% de IVA a la Base Imponible:
+
+9.722,73×0,16=1.555,63(Impuesto IVA)
+Aplicar el 75% de retención:
+
+1.555,63×0,75=1.166,73(IVA Retenido)

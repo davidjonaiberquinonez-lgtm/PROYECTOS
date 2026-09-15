@@ -95,7 +95,186 @@
   #punto-ocr { width: 8px; height: 8px; border-radius: 50%; background: #ffb3b0; }
   #punto-ocr.ok { background: #b6f0a1; }
 
-  main { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+  #layout-contenedor {
+    display: flex; gap: 0; margin: 0 auto;
+    height: calc(100vh - 58px); overflow: hidden;
+  }
+
+  /* ---------- Panel izquierdo 50% — Visualizador + Lista ---------- */
+  .panel-visualizador {
+    width: 50%; flex-shrink: 0; display: flex; flex-direction: column;
+    background: var(--panel); border-right: 2px solid var(--borde);
+    overflow: hidden;
+  }
+  .visualizador-header {
+    background: linear-gradient(135deg, var(--acento-oscuro), var(--acento));
+    color: white; padding: 14px 18px;
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .visualizador-header h2 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .visualizador-header h2 i { width: 18px; height: 18px; }
+  .visualizador-header .badge-count {
+    background: rgba(255,255,255,0.2); border-radius: 999px; padding: 2px 10px;
+    font-size: 11px; font-weight: 600;
+  }
+  .visualizador-buscar {
+    padding: 12px 16px; border-bottom: 1px solid var(--borde); flex-shrink: 0;
+  }
+  .visualizador-buscar input {
+    width: 100%; border: 1px solid var(--borde); background: var(--panel-alt);
+    border-radius: 8px; padding: 10px 12px 10px 34px; font-size: 13px; color: var(--texto);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .visualizador-buscar input:focus {
+    outline: none; border-color: var(--acento);
+    box-shadow: 0 0 0 3px rgba(124,92,255,0.12);
+  }
+  .visualizador-buscar input::placeholder { color: var(--texto-tenue); }
+  .visualizador-buscar-wraper {
+    position: relative;
+  }
+  .visualizador-buscar-wraper .search-icon {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px; color: var(--texto-tenue); pointer-events: none;
+  }
+  .visualizador-lista {
+    overflow-y: auto; flex: 1; min-height: 0;
+  }
+  .visualizador-lista::-webkit-scrollbar { width: 6px; }
+  .visualizador-lista::-webkit-scrollbar-track { background: transparent; }
+  .visualizador-lista::-webkit-scrollbar-thumb { background: var(--borde); border-radius: 3px; }
+  .visualizador-item {
+    padding: 12px 16px; border-bottom: 1px solid var(--panel-alt); cursor: pointer;
+    transition: background 0.12s ease, border-left-color 0.12s ease;
+    border-left: 3px solid transparent;
+  }
+  .visualizador-item:hover { background: var(--acento-clara); }
+  .visualizador-item.activo {
+    background: var(--acento-clara); border-left-color: var(--acento);
+  }
+  .visualizador-item .item-numero {
+    font-weight: 700; font-size: 14px; color: var(--acento-oscuro);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .visualizador-item .item-numero i { width: 14px; height: 14px; opacity: 0.6; }
+  .visualizador-item .item-proveedor {
+    font-size: 12.5px; color: var(--texto); margin-top: 3px; font-weight: 500;
+  }
+  .visualizador-item .item-detalle {
+    font-size: 11px; color: var(--texto-tenue); margin-top: 2px;
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .visualizador-item .item-detalle .badge-pdf {
+    background: rgba(31,168,85,0.1); color: var(--positiva); border-radius: 4px;
+    padding: 1px 6px; font-weight: 600; font-size: 10px;
+  }
+  .visualizador-item .item-detalle .badge-no-pdf {
+    color: var(--texto-tenue); font-style: italic;
+  }
+  .visualizador-item .item-fecha {
+    font-size: 10.5px; color: var(--texto-tenue); margin-top: 3px;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .visualizador-item .item-fecha i { width: 11px; height: 11px; }
+
+  /* PDF viewer area */
+  .visualizador-pdf {
+    border-top: 2px solid var(--borde); flex-shrink: 0;
+    display: none; background: #2a2a2a; position: relative;
+  }
+  .visualizador-pdf.visible { display: flex; flex-direction: column; }
+  .visualizador-pdf-toolbar {
+    background: var(--panel); padding: 6px 12px; display: flex; align-items: center;
+    justify-content: space-between; border-bottom: 1px solid var(--borde);
+  }
+  .visualizador-pdf-toolbar span {
+    font-size: 11px; color: var(--texto-tenue); display: flex; align-items: center; gap: 4px;
+  }
+  .visualizador-pdf-toolbar span i { width: 13px; height: 13px; }
+  .boton-cerrar-pdf {
+    background: none; border: none; padding: 4px; cursor: pointer;
+    color: var(--texto-tenue); border-radius: 4px; display: inline-flex;
+  }
+  .boton-cerrar-pdf:hover { background: var(--panel-alt); color: var(--negativa); }
+  .boton-cerrar-pdf i { width: 14px; height: 14px; }
+  .visualizador-pdf iframe {
+    width: 100%; flex: 1; border: none; min-height: 300px;
+    background: white;
+  }
+  .visualizador-pdf img {
+    width: 100%; flex: 1; object-fit: contain; min-height: 300px;
+    background: #1a1a1a; display: block;
+  }
+  .visualizador-pdf { min-height: 300px; }
+  .visualizador-pdf.visible { flex: 1; min-height: 300px; max-height: 50vh; }
+
+  .visualizador-vacio {
+    padding: 40px 20px; text-align: center; color: var(--texto-tenue); font-size: 13px;
+  }
+   .visualizador-vacio i { width: 40px; height: 40px; margin-bottom: 10px; opacity: 0.3; }
+
+  /* ---------- Modal Historial ---------- */
+  .overlay-modal-historial {
+    position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+  }
+  .overlay-modal-historial[style*="display:none"] { display: none !important; }
+   .modal-historial {
+    background: var(--panel); border-radius: 14px; width: 85%; max-width: 900px;
+    max-height: 80vh; display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: aparecerModal 0.18s ease;
+  }
+  @keyframes aparecerModal { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  .modal-historial-header {
+    background: linear-gradient(135deg, var(--acento-oscuro), var(--acento));
+    color: white; padding: 14px 18px; border-radius: 14px 14px 0 0;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-historial-header h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .modal-historial-header h3 i { width: 18px; height: 18px; }
+  .boton-cerrar-modal-historial {
+    background: rgba(255,255,255,0.16); border: none; padding: 6px; cursor: pointer;
+    color: white; border-radius: 999px; display: inline-flex;
+  }
+  .boton-cerrar-modal-historial:hover { background: rgba(255,255,255,0.28); }
+  .boton-cerrar-modal-historial i { width: 16px; height: 16px; }
+  .modal-historial-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
+  .tabla-historial-modal {
+    width: 100%; border-collapse: collapse; font-size: 12.5px;
+  }
+  .tabla-historial-modal thead { background: var(--panel-alt); }
+  .tabla-historial-modal thead th {
+    text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em;
+    font-weight: 600; color: var(--texto-tenue); padding: 10px 12px;
+    border-bottom: 2px solid var(--borde);
+  }
+  .tabla-historial-modal tbody tr { border-bottom: 1px solid var(--panel-alt); }
+  .tabla-historial-modal tbody tr:hover { background: var(--acento-clara); }
+  .tabla-historial-modal td { padding: 8px 12px; }
+  .modal-historial-footer {
+    padding: 12px 18px; border-top: 1px solid var(--borde); display: flex;
+    justify-content: space-between; align-items: center;
+  }
+  .modal-historial-footer span { font-size: 12px; color: var(--texto-tenue); }
+  .modal-historial-footer .acciones-footer { display: flex; gap: 8px; }
+
+  /* ---------- Botón Subir en resultados ---------- */
+  .boton-subir-bd {
+    background: var(--positiva); color: white;
+  }
+  .boton-subir-bd:hover { filter: brightness(1.06); }
+  .visualizador-vacio p { margin: 0; line-height: 1.5; }
+
+  /* ---------- Panel derecho 50% — Módulo OCR ---------- */
+  main {
+    width: 50%; flex-shrink: 0; overflow-y: auto;
+    padding: 20px 24px 60px;
+    max-height: calc(100vh - 58px);
+  }
+  main::-webkit-scrollbar { width: 8px; }
+  main::-webkit-scrollbar-track { background: var(--panel-alt); }
+  main::-webkit-scrollbar-thumb { background: var(--borde); border-radius: 4px; }
+  main::-webkit-scrollbar-thumb:hover { background: var(--texto-tenue); }
 
   .panel {
     background: var(--panel);
@@ -292,7 +471,34 @@
     display: inline-flex;
   }
   .boton-quitar-proveedor:hover { color: var(--negativa); }
-  .boton-quitar-proveedor i { width: 13px; height: 13px; }
+   .boton-quitar-proveedor i { width: 13px; height: 13px; }
+
+  /* ---------- Lotes en tarjeta ---------- */
+  .bloque-lotes { margin-top: 8px; }
+  .bloque-lotes label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em;
+    color: var(--texto-tenue); font-weight: 600; display: flex; align-items: center; gap: 3px;
+  }
+  .bloque-lotes label i { width: 12px; height: 12px; }
+  .input-lotes {
+    width: 100%; border: 1px solid var(--borde); background: white; border-radius: 6px;
+    padding: 6px 8px; font-size: 12px; font-family: "Segoe UI", system-ui, sans-serif;
+    color: var(--texto); margin-top: 3px;
+  }
+  .input-lotes:focus { outline: 1px solid var(--acento); }
+  .input-lotes::placeholder { color: var(--texto-tenue); }
+  .lista-chip-lotes { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .chip-lote-item {
+    display: inline-flex; align-items: center; gap: 3px; background: rgba(124,92,255,0.1);
+    color: var(--acento-oscuro); border-radius: 999px; padding: 2px 8px; font-size: 11px;
+    font-weight: 600; font-family: Consolas, monospace;
+  }
+  .chip-lote-item .quitar-lote {
+    background: none; border: none; cursor: pointer; color: var(--texto-tenue);
+    display: inline-flex; padding: 0;
+  }
+  .chip-lote-item .quitar-lote:hover { color: var(--negativa); }
+  .chip-lote-item .quitar-lote i { width: 10px; height: 10px; }
 </style>
 </head>
 <body>
@@ -306,8 +512,8 @@
     <a href="/api/historico/descargar" id="enlace-historico" title="Descarga el Excel con todos los números guardados hasta ahora">
       <i data-lucide="database"></i> Histórico: <span id="texto-historico">—</span>
     </a>
-    <button id="boton-cargar-servidor" title="Sube al servidor las filas del histórico que ya revisaste y todavía no se habían cargado">
-      <i data-lucide="upload-cloud"></i> Cargar al servidor <span id="contador-pendientes-carga"></span>
+    <button id="boton-cargar-servidor" title="Ver historial de facturas cargadas al servidor">
+      <i data-lucide="list-checks"></i> Ver historial <span id="contador-pendientes-carga"></span>
     </button>
     <button id="boton-reiniciar-historico" title="Elimina el progreso acumulado del Excel histórico (queda un respaldo con fecha)">
       <i data-lucide="trash-2"></i>
@@ -319,7 +525,63 @@
   </div>
 </header>
 
-<main>
+<!-- Modal Historial de facturas subidas -->
+<div class="overlay-modal-historial" id="overlay-modal-historial" style="display:none;">
+  <div class="modal-historial">
+    <div class="modal-historial-header">
+      <h3><i data-lucide="list-checks"></i> Historial de facturas cargadas</h3>
+      <button type="button" class="boton-cerrar-modal-historial" id="boton-cerrar-modal-historial"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-historial-body">
+      <div id="contenido-historial-modal">
+        <p style="text-align:center; color:var(--texto-tenue); padding:20px;">Cargando…</p>
+      </div>
+    </div>
+    <div class="modal-historial-footer">
+      <span id="total-historial-info"></span>
+      <div class="acciones-footer">
+        <a href="/api/historico/descargar" class="secundario" style="font-size:12px; padding:6px 12px; text-decoration:none; border-radius:6px; display:inline-flex; align-items:center; gap:4px;">
+          <i data-lucide="download" style="width:13px;height:13px;"></i> Descargar Excel
+        </a>
+        <button id="boton-cargar-pendientes" class="secundario" title="Subir facturas pendientes del histórico" style="font-size:12px; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; cursor:pointer;">
+          <i data-lucide="upload-cloud" style="width:13px;height:13px;"></i> Cargar pendientes
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="layout-contenedor">
+  <div class="panel-visualizador">
+    <div class="visualizador-header">
+      <h2><i data-lucide="file-text"></i> Visualizador</h2>
+      <span class="badge-count" id="badge-count"></span>
+    </div>
+    <div id="visualizador-facturas">
+    <div class="visualizador-buscar">
+      <div class="visualizador-buscar-wraper">
+        <i data-lucide="search" class="search-icon"></i>
+        <input type="text" id="input-buscar-factura" placeholder="Buscar por proveedor, código o factura…" autocomplete="off">
+      </div>
+    </div>
+    <div class="visualizador-lista" id="lista-facturas">
+      <div class="visualizador-vacio" id="visualizador-vacio">
+        <i data-lucide="inbox"></i>
+        <p>Sin facturas cargadas.<br>Sube y escanea un PDF.</p>
+      </div>
+    </div>
+    </div>
+    <div class="visualizador-pdf" id="visualizador-pdf">
+      <div class="visualizador-pdf-toolbar">
+        <span id="pdf-toolbar-info"><i data-lucide="file"></i> Documento</span>
+        <button type="button" class="boton-cerrar-pdf" id="boton-cerrar-pdf"><i data-lucide="x"></i></button>
+      </div>
+      <iframe id="iframe-pdf" title="PDF de factura" style="display:none;"></iframe>
+      <img id="img-preview" title="Preview de imagen" style="display:none;">
+    </div>
+  </div>
+
+  <main>
   <div class="panel">
     <div id="zona-carga">
       <i data-lucide="scan-line"></i>
@@ -338,9 +600,16 @@
       <button class="secundario" id="boton-nuevo"><i data-lucide="rotate-ccw"></i> Escanear otras facturas</button>
       <span class="contador-resultados" id="contador-resultados"></span>
     </div>
+    <div class="barra-acciones" style="margin-top:0; margin-bottom:18px; padding-top:12px; border-top: 1px solid var(--borde);">
+      <button class="boton-subir-bd" id="boton-subir-bd" title="Guarda las facturas escaneadas en la base de datos de psicotrópicos">
+        <i data-lucide="database"></i> Guardar en base de datos
+      </button>
+      <span id="resultado-subida" style="font-size:12px; color:var(--texto-tenue); display:flex; align-items:center; gap:4px;"></span>
+    </div>
     <div class="rejilla-tarjetas" id="rejilla-tarjetas"></div>
   </div>
 </main>
+</div>
 
 <script>
 let ultimosResultados = [];
@@ -383,25 +652,94 @@ async function actualizarContadorHistorico() {
   }
 }
 
-document.getElementById("boton-cargar-servidor").addEventListener("click", async () => {
-  const boton = document.getElementById("boton-cargar-servidor");
-  boton.disabled = true;
-  boton.innerHTML = `<i data-lucide="loader-circle" class="girando" style="width:13px;height:13px;"></i> Cargando…`;
+document.getElementById("boton-cargar-servidor").addEventListener("click", () => {
+  abrirModalHistorial();
+});
+
+// ---------- Modal Historial ----------
+const overlayModalHistorial = document.getElementById("overlay-modal-historial");
+const contenidoHistorialModal = document.getElementById("contenido-historial-modal");
+const totalHistorialInfo = document.getElementById("total-historial-info");
+const botonCerrarModalHistorial = document.getElementById("boton-cerrar-modal-historial");
+const botonCargarPendientes = document.getElementById("boton-cargar-pendientes");
+
+async function abrirModalHistorial() {
+  overlayModalHistorial.style.display = "flex";
+  contenidoHistorialModal.innerHTML = `<p style="text-align:center; color:var(--texto-tenue); padding:20px;">Cargando…</p>`;
+  totalHistorialInfo.textContent = "";
+  refrescarIconos();
+  try {
+    const respuesta = await fetch("/api/facturas/visualizador");
+    const datos = await respuesta.json();
+    const facturas = datos.facturas || [];
+    if (!facturas.length) {
+      contenidoHistorialModal.innerHTML = `
+        <div style="text-align:center; padding:40px 20px; color:var(--texto-tenue);">
+          <i data-lucide="inbox" style="width:40px;height:40px;margin-bottom:10px;opacity:0.3;"></i>
+          <p style="margin:0; font-size:14px;">Sin facturas cargadas.</p>
+          <p style="margin:6px 0 0; font-size:12px;">Escanea y guarda facturas para verlas aquí.</p>
+        </div>`;
+      totalHistorialInfo.textContent = "0 facturas";
+      refrescarIconos();
+      return;
+    }
+    contenidoHistorialModal.innerHTML = `
+      <table class="tabla-historial-modal">
+        <thead>
+          <tr>
+            <th style="width:130px;">Fecha</th>
+            <th>Nº Factura</th>
+            <th>Proveedor</th>
+            <th style="width:80px;">Código</th>
+            <th style="width:90px;">RIF</th>
+            <th style="width:60px;">PDF</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${facturas.map(f => `
+            <tr>
+              <td style="white-space:nowrap;">${f.fecha}</td>
+              <td style="font-weight:700; color:var(--acento-oscuro);">${f.numero_factura || "—"}</td>
+              <td>${f.nombre_proveedor !== "—" ? f.nombre_proveedor : "—"}</td>
+              <td style="font-family:Consolas,monospace; font-size:11px;">${f.codigo_proveedor || "—"}</td>
+              <td style="font-size:11px;">${f.rif_proveedor || "—"}</td>
+              <td style="text-align:center;">${f.tiene_pdf
+                ? '<span style="color:var(--positiva); font-weight:600;">✓</span>'
+                : '<span style="color:var(--texto-tenue);">—</span>'}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>`;
+    const conPdf = facturas.filter(f => f.tiene_pdf).length;
+    totalHistorialInfo.textContent = `${facturas.length} factura(s) · ${conPdf} con PDF`;
+    refrescarIconos();
+  } catch (error) {
+    contenidoHistorialModal.innerHTML = `<p style="text-align:center; color:var(--negativa);">Error al cargar el historial.</p>`;
+  }
+}
+
+botonCerrarModalHistorial.addEventListener("click", () => {
+  overlayModalHistorial.style.display = "none";
+});
+
+overlayModalHistorial.addEventListener("click", (e) => {
+  if (e.target === overlayModalHistorial) overlayModalHistorial.style.display = "none";
+});
+
+botonCargarPendientes.addEventListener("click", async () => {
+  botonCargarPendientes.disabled = true;
+  botonCargarPendientes.innerHTML = `<i data-lucide="loader-circle" class="girando" style="width:13px;height:13px;"></i> Cargando…`;
   refrescarIconos();
   try {
     const respuesta = await fetch("/api/historico/cargar_al_servidor", { method: "POST" });
     const datos = await respuesta.json();
-    if (!respuesta.ok) throw new Error(datos.error || "No se pudo cargar al servidor");
-    boton.innerHTML = `<i data-lucide="check"></i> ${datos.filas_nuevas} nueva(s) cargada(s)`;
+    if (!respuesta.ok) throw new Error(datos.error || "Error");
+    botonCargarPendientes.innerHTML = `<i data-lucide="check" style="width:13px;height:13px;"></i> ${datos.filas_nuevas} cargada(s)`;
     refrescarIconos();
+    setTimeout(() => { abrirModalHistorial(); actualizarContadorHistorico(); cargarListaFacturas(); }, 1500);
   } catch (error) {
-    alert(`Error: ${error.message}`);
+    alert(error.message);
   } finally {
-    setTimeout(() => {
-      boton.innerHTML = `<i data-lucide="upload-cloud"></i> Cargar al servidor <span id="contador-pendientes-carga"></span>`;
-      refrescarIconos();
-      actualizarContadorHistorico();
-    }, 1800);
+    botonCargarPendientes.disabled = false;
   }
 });
 
@@ -462,11 +800,62 @@ async function escanearArchivo(archivo) {
   barraProgresoRelleno.style.width = "0%";
   mensajeProgreso(`Preparando "${archivo.name}"…`);
 
+  // Mostrar preview en visualizador izquierdo
+  facturaActiva = { id: "preview", numero_factura: null, nombre_proveedor: archivo.name, codigo_proveedor: "—", rif_proveedor: "—", fecha: "En escaneo…", tiene_pdf: true, archivo: archivo };
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = URL.createObjectURL(archivo);
+  const ext = archivo.name.split(".").pop().toLowerCase();
+  if (ext === "pdf") {
+    iframePdf.src = previewUrl;
+    iframePdf.style.display = "block";
+    imgPreview.style.display = "none";
+    visualizadorPdf.classList.add("visible");
+    pdfToolbarInfo.innerHTML = `<i data-lucide="file"></i> ${archivo.name}`;
+    badgeCount.textContent = "1";
+    listaFacturas.innerHTML = `<div class="visualizador-item activo">
+      <div class="item-numero"><i data-lucide="receipt"></i> ${archivo.name}</div>
+      <div class="item-proveedor">PDF subido — escaneando…</div>
+      <div class="item-detalle"><span class="badge-pdf"><i data-lucide="file-check" style="width:10px;height:10px;vertical-align:middle;margin-right:2px;"></i> PDF</span></div>
+      <div class="item-fecha"><i data-lucide="clock"></i> Escaneando…</div>`;
+    refrescarIconos();
+  } else {
+    imgPreview.src = previewUrl;
+    imgPreview.style.display = "block";
+    iframePdf.style.display = "none";
+    visualizadorPdf.classList.add("visible");
+    pdfToolbarInfo.innerHTML = `<i data-lucide="image"></i> ${archivo.name}`;
+    badgeCount.textContent = "1";
+    listaFacturas.innerHTML = `<div class="visualizador-item activo">
+      <div class="item-numero"><i data-lucide="image"></i> ${archivo.name}</div>
+      <div class="item-proveedor">Imagen subida — preview activo</div>
+      <div class="item-detalle"><span class="badge-pdf"><i data-lucide="file-check" style="width:10px;height:10px;vertical-align:middle;margin-right:2px;"></i> IMG</span></div>
+      <div class="item-fecha"><i data-lucide="clock"></i> Escaneando…</div>`;
+    refrescarIconos();
+  }
+
   const datosFormulario = new FormData();
   datosFormulario.append("archivo", archivo);
 
+  // Timeout de inactividad (11/09, a pedido explícito del usuario: un PDF
+  // se quedó trabado en "Preparando…" para siempre, sin ningún error).
+  // Antes este fetch no tenía ningún límite — si la conexión con el
+  // servidor (o con la GDX del otro lado) se cortaba en silencio, la
+  // promesa nunca se resolvía ni rechazaba y la pantalla quedaba
+  // congelada sin aviso. Se reinicia cada vez que llega un byte nuevo
+  // (no es un límite total: un PDF de varias páginas puede tardar
+  // varios minutos legítimamente), así que solo corta cuando de verdad
+  // no está pasando nada.
+  const LIMITE_INACTIVIDAD_MS = 120000;
+  const controlador = new AbortController();
+  let temporizadorInactividad;
+  const reiniciarTemporizadorInactividad = () => {
+    clearTimeout(temporizadorInactividad);
+    temporizadorInactividad = setTimeout(() => controlador.abort(), LIMITE_INACTIVIDAD_MS);
+  };
+
   try {
-    const respuesta = await fetch("/api/escanear", { method: "POST", body: datosFormulario });
+    reiniciarTemporizadorInactividad();
+    const respuesta = await fetch("/api/escanear", { method: "POST", body: datosFormulario, signal: controlador.signal });
 
     if (!respuesta.ok || !respuesta.body) {
       const datos = await respuesta.json().catch(() => ({}));
@@ -481,6 +870,7 @@ async function escanearArchivo(archivo) {
 
     while (true) {
       const { done, value } = await lector.read();
+      reiniciarTemporizadorInactividad();
       if (done) break;
       buffer += decodificador.decode(value, { stream: true });
 
@@ -505,12 +895,19 @@ async function escanearArchivo(archivo) {
         } else if (evento.evento === "fin") {
           mensajeCarga.textContent = `Listo: ${procesadas} factura(s) leída(s).`;
           barraProgreso.classList.remove("visible");
+          // NO eliminar preview — mantener PDF/imagen visible
+          cargarListaFacturas();
         }
       }
     }
   } catch (error) {
-    mensajeCarga.textContent = `Error: ${error.message}`;
+    const esTimeout = error.name === "AbortError";
+    mensajeCarga.textContent = esTimeout
+      ? "Error: el servidor no respondió en 2 minutos (¿se cortó la conexión o la GDX está caída?). Probá de nuevo."
+      : `Error: ${error.message}`;
     barraProgreso.classList.remove("visible");
+  } finally {
+    clearTimeout(temporizadorInactividad);
   }
 }
 
@@ -534,6 +931,11 @@ function tarjetaResultado(r) {
       </div>
       <input class="input-numero-grande ${vacio ? "vacio" : ""}" type="text" inputmode="numeric" data-campo="numero_factura" value="${vacio ? "" : numero}" placeholder="sin número">
       <div class="bloque-proveedor" id="proveedor-${r.pagina}"></div>
+      <div class="bloque-lotes" id="lotes-${r.pagina}">
+        <label><i data-lucide="package"></i> Lotes</label>
+        <input class="input-lotes" type="text" placeholder="Número de lote (Enter para agregar)" data-lotes-input>
+        <div class="lista-chip-lotes" data-lotes-lista></div>
+      </div>
       <div class="archivo-origen" title="${r.archivo}">${r.archivo}</div>
     </div>`;
 }
@@ -659,6 +1061,84 @@ function activarTarjeta(pagina) {
     });
   }
   renderBloqueProveedor(pagina);
+  activarLotes(pagina);
+}
+
+// ---------- Lotes por tarjeta ----------
+function activarLotes(pagina) {
+  const bloque = document.getElementById(`lotes-${pagina}`);
+  if (!bloque) return;
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado) return;
+  if (!resultado.lotes) resultado.lotes = [];
+
+  const input = bloque.querySelector(".input-lotes");
+  const lista = bloque.querySelector(".lista-chip-lotes");
+
+  input.value = "";
+  lista.innerHTML = "";
+
+  // Pre-poblar lotes extraídos por OCR si no están ya en resultado.lotes
+  const lotesOCR = (resultado.campos && resultado.campos.lotes) || [];
+  lotesOCR.forEach((lote) => {
+    if (lote && !resultado.lotes.includes(lote)) {
+      resultado.lotes.push(lote);
+      agregarChipLote(lote, lista, pagina);
+    }
+  });
+
+  resultado.lotes.forEach((lote) => {
+    if (!lista.querySelector(`[data-lote="${CSS.escape(lote)}"]`)) {
+      agregarChipLote(lote, lista, pagina);
+    }
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const valor = input.value.trim();
+      if (valor && !resultado.lotes.includes(valor)) {
+        resultado.lotes.push(valor);
+        agregarChipLote(valor, lista, pagina);
+        sincronizarLotesHistorico(pagina);
+      }
+      input.value = "";
+    }
+  });
+}
+
+function agregarChipLote(lote, lista, pagina) {
+  const chip = document.createElement("span");
+  chip.className = "chip-lote-item";
+  chip.setAttribute("data-lote", lote);
+  chip.innerHTML = `${lote} <button type="button" class="quitar-lote"><i data-lucide="x"></i></button>`;
+  chip.querySelector(".quitar-lote").addEventListener("click", () => {
+    const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+    if (resultado) {
+      resultado.lotes = resultado.lotes.filter((l) => l !== lote);
+      sincronizarLotesHistorico(pagina);
+    }
+    chip.remove();
+  });
+  lista.appendChild(chip);
+  refrescarIconos();
+}
+
+function sincronizarLotesHistorico(pagina) {
+  const resultado = ultimosResultados.find((r) => r.pagina === pagina);
+  if (!resultado || !resultado.fila_historico) return;
+  clearTimeout(temporizadoresSync[pagina]);
+  temporizadoresSync[pagina] = setTimeout(async () => {
+    try {
+      await fetch("/api/historico/actualizar_fila", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fila: resultado.fila_historico, lotes: resultado.lotes.join("; ") }),
+      });
+    } catch (error) {
+      console.error("No se pudo sincronizar lotes en el histórico:", error);
+    }
+  }, 600);
 }
 
 function agregarTarjeta(resultado) {
@@ -714,16 +1194,195 @@ document.getElementById("boton-exportar").addEventListener("click", async () => 
   URL.revokeObjectURL(url);
 });
 
+// ---------- Botón "Guardar en base de datos" ----------
+document.getElementById("boton-subir-bd").addEventListener("click", async () => {
+  const btn = document.getElementById("boton-subir-bd");
+  const resultadoSubida = document.getElementById("resultado-subida");
+  btn.disabled = true;
+  btn.innerHTML = `<i data-lucide="loader-circle" class="girando" style="width:14px;height:14px;"></i> Guardando…`;
+  refrescarIconos();
+  try {
+    // 1) Guarda facturas en Excel histórico -> BD
+    const respExcel = await fetch("/api/historico/cargar_al_servidor", { method: "POST" });
+    const datosExcel = await respExcel.json();
+    if (!respExcel.ok) throw new Error(datosExcel.error || "Error al guardar");
+
+    // 2) Guarda lotes de las tarjetas activas (incluye facturas ya cargadas antes)
+    const facturasConLotes = ultimosResultados
+      .filter((r) => r.ok && r.lotes && r.lotes.length && r.campos.numero_factura)
+      .map((r) => ({
+        numero_factura: r.campos.numero_factura,
+        lotes: r.lotes,
+      }));
+    if (facturasConLotes.length) {
+      const respLotes = await fetch("/api/lotes/guardar_con_factura", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ facturas_con_lotes: facturasConLotes }),
+      });
+      const datosLotes = await respLotes.json();
+      if (datosLotes.ok && datosLotes.registrados) {
+        btn.classList.add("exito");
+        btn.innerHTML = `<i data-lucide="check"></i> ${datosExcel.filas_nuevas} factura(s) · ${datosLotes.registrados} lote(s)`;
+        resultadoSubida.innerHTML = `<i data-lucide="circle-check" style="width:13px;height:13px;color:var(--positiva);"></i> Facturas y lotes guardados`;
+        resultadoSubida.style.color = "var(--positiva)";
+        refrescarIconos();
+      }
+    }
+
+    if (!facturasConLotes.length) {
+      btn.classList.add("exito");
+      btn.innerHTML = `<i data-lucide="check"></i> ${datosExcel.filas_nuevas} guardada(s)`;
+      resultadoSubida.innerHTML = `<i data-lucide="circle-check" style="width:13px;height:13px;color:var(--positiva);"></i> Guardado correctamente`;
+      resultadoSubida.style.color = "var(--positiva)";
+      refrescarIconos();
+    }
+
+    cargarListaFacturas();
+    actualizarContadorHistorico();
+    setTimeout(() => {
+      btn.classList.remove("exito");
+      btn.innerHTML = `<i data-lucide="database"></i> Guardar en base de datos`;
+      btn.disabled = false;
+      resultadoSubida.innerHTML = "";
+      refrescarIconos();
+    }, 3000);
+  } catch (error) {
+    resultadoSubida.innerHTML = `<i data-lucide="circle-x" style="width:13px;height:13px;color:var(--negativa);"></i> ${error.message}`;
+    resultadoSubida.style.color = "var(--negativa)";
+    refrescarIconos();
+    btn.disabled = false;
+    btn.innerHTML = `<i data-lucide="database"></i> Guardar en base de datos`;
+  }
+});
+
 document.getElementById("boton-nuevo").addEventListener("click", () => {
   panelResultados.style.display = "none";
   mensajeCarga.textContent = "";
   entradaArchivo.value = "";
   ultimosResultados = [];
+  facturaActiva = null;
+  if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+  visualizadorPdf.classList.remove("visible");
+  iframePdf.src = "about:blank";
+  iframePdf.style.display = "none";
+  imgPreview.style.display = "none";
+  cargarListaFacturas();
+});
+
+// ---------------- Visualizador PDF ----------------
+
+const inputBuscarFactura = document.getElementById("input-buscar-factura");
+const listaFacturas = document.getElementById("lista-facturas");
+const visualizadorPdf = document.getElementById("visualizador-pdf");
+const iframePdf = document.getElementById("iframe-pdf");
+const imgPreview = document.getElementById("img-preview");
+const visualizadorVacio = document.getElementById("visualizador-vacio");
+const pdfToolbarInfo = document.getElementById("pdf-toolbar-info");
+const badgeCount = document.getElementById("badge-count");
+const botonCerrarPdf = document.getElementById("boton-cerrar-pdf");
+let facturasCache = [];
+let facturaActiva = null;
+let temporizadorBusquedaVisualizador = null;
+let previewUrl = null;
+
+async function cargarListaFacturas(q) {
+  try {
+    const url = q
+      ? `/api/facturas/visualizador?q=${encodeURIComponent(q)}`
+      : "/api/facturas/visualizador";
+    const respuesta = await fetch(url);
+    const datos = await respuesta.json();
+    if (!datos.ok) return;
+    facturasCache = datos.facturas || [];
+    renderListaFacturas();
+  } catch (error) {
+    console.error("Error cargando facturas:", error);
+  }
+}
+
+function renderListaFacturas() {
+  listaFacturas.innerHTML = "";
+  badgeCount.textContent = facturasCache.length || "";
+  if (!facturasCache.length) {
+    listaFacturas.innerHTML = `
+      <div class="visualizador-vacio">
+        <i data-lucide="inbox"></i>
+        <p>${inputBuscarFactura.value.trim() ? "Sin resultados." : "Sin facturas cargadas.<br>Sube y escanea un PDF."}</p>
+      </div>`;
+    refrescarIconos();
+    return;
+  }
+  facturasCache.forEach(f => {
+    const item = document.createElement("div");
+    item.className = "visualizador-item" + (facturaActiva && facturaActiva.id === f.id ? " activo" : "");
+    const pdfBadge = f.tiene_pdf
+      ? `<span class="badge-pdf"><i data-lucide="file-check" style="width:10px;height:10px;vertical-align:middle;margin-right:2px;"></i> PDF</span>`
+      : `<span class="badge-no-pdf">Sin PDF</span>`;
+    const rifPart = f.rif_proveedor && f.rif_proveedor !== "—" ? `<span>RIF: ${f.rif_proveedor}</span>` : "";
+    item.innerHTML = `
+      <div class="item-numero"><i data-lucide="receipt"></i> ${f.numero_factura ? "Factura " + f.numero_factura : "Sin número"}</div>
+      <div class="item-proveedor">${f.nombre_proveedor !== "—" ? f.nombre_proveedor : "Sin proveedor"}${f.codigo_proveedor && f.codigo_proveedor !== "—" ? " <span style='color:var(--texto-tenue);font-weight:400;'>(" + f.codigo_proveedor + ")</span>" : ""}</div>
+      <div class="item-detalle">${rifPart} ${pdfBadge}</div>
+      <div class="item-fecha"><i data-lucide="clock"></i> ${f.fecha}</div>`;
+    item.addEventListener("click", () => seleccionarFactura(f, item));
+    listaFacturas.appendChild(item);
+  });
+  refrescarIconos();
+}
+
+function seleccionarFactura(f, element) {
+  facturaActiva = f;
+  document.querySelectorAll(".visualizador-item").forEach(el => el.classList.remove("activo"));
+  if (element) element.classList.add("activo");
+  if (f.tiene_pdf) {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    const urlDocumento = `/api/facturas/${f.id}/pdf`;
+    // 11/09: algunas facturas se guardan como foto (.jpeg), no PDF — usar
+    // siempre el <iframe> para eso rompía el preview (el navegador no
+    // puede mostrar una imagen ahí adentro). `es_imagen` viene calculado
+    // del lado del servidor según la extensión real guardada.
+    if (f.es_imagen) {
+      imgPreview.src = urlDocumento;
+      imgPreview.style.display = "block";
+      iframePdf.style.display = "none";
+    } else {
+      iframePdf.src = urlDocumento;
+      iframePdf.style.display = "block";
+      imgPreview.style.display = "none";
+    }
+    visualizadorPdf.classList.add("visible");
+    pdfToolbarInfo.innerHTML = `<i data-lucide="file"></i> ${f.numero_factura ? "Factura " + f.numero_factura : "Documento"} — ${f.nombre_proveedor || "—"}`;
+    refrescarIconos();
+  } else {
+    iframePdf.style.display = "none";
+    imgPreview.style.display = "none";
+    visualizadorPdf.classList.remove("visible");
+  }
+}
+
+botonCerrarPdf.addEventListener("click", () => {
+  visualizadorPdf.classList.remove("visible");
+  iframePdf.src = "about:blank";
+  iframePdf.style.display = "none";
+  imgPreview.style.display = "none";
+  facturaActiva = null;
+  document.querySelectorAll(".visualizador-item").forEach(el => el.classList.remove("activo"));
+});
+
+inputBuscarFactura.addEventListener("input", () => {
+  const texto = inputBuscarFactura.value.trim();
+  clearTimeout(temporizadorBusquedaVisualizador);
+  temporizadorBusquedaVisualizador = setTimeout(() => {
+    cargarListaFacturas(texto);
+  }, 350);
 });
 
 refrescarIconos();
 verificarEstadoOCR();
 actualizarContadorHistorico();
+cargarListaFacturas();
 </script>
 </body>
 </html>
