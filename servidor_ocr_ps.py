@@ -71,6 +71,18 @@ app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024  # 30 MB
 # una clave aleatoria por arranque (las sesiones activas se cierran solas en
 # cada reinicio, pero el server sigue funcionando).
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or os.urandom(32)
+# Esta app se embebe como iframe cross-origin dentro del CRM (ver
+# agregar_cors más abajo) — sin esto, la cookie de sesión se pone bien en
+# el login pero el navegador la descarta en los fetch() posteriores desde
+# adentro del iframe (SameSite=Lax, el default de Flask, bloquea cookies
+# en contextos "cross-site" como un iframe de otro dominio). Resultado
+# real reportado (15/09, migración a la .23): "ya inicié sesión y no lo
+# toma" — usuario_activo() siempre None después del primer request.
+# SameSite=None EXIGE Secure=True (si no, el navegador rechaza la cookie
+# directamente) — el sitio ya se sirve por HTTPS (ocr.cristmedicals.com),
+# así que no hay downside.
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
 
 
 @app.after_request
@@ -483,7 +495,14 @@ def logout():
 
 @app.route("/api/estado-ocr", methods=["GET"])
 def estado_ocr():
-    cadena_respaldo = [f"{ocr.MODELO_VISION_DEEPSEEK} (DeepSeek)"]
+    # 15/09: "respaldo" decía "DeepSeek" siempre, hardcodeado — DeepSeek se
+    # sacó de la cascada real hace rato (sin saldo en la cuenta,
+    # reemplazado por NVIDIA NIM) pero acá nadie había actualizado este
+    # texto. consultar_vision() real es Qwen-VL -> NVIDIA NIM -> Gemini ->
+    # OpenRouter, ver ocr_ps_core.consultar_vision.
+    cadena_respaldo = []
+    if ocr.CLAVES_NVIDIA:
+        cadena_respaldo.append(f"{ocr.MODELO_VISION_NVIDIA} (NVIDIA NIM)")
     if ocr.clave_google:
         cadena_respaldo.append(f"{ocr.MODELO_VISION} (Gemini)")
     if ocr.clave_openrouter:
@@ -884,7 +903,12 @@ def pedidos_index():
 
 @app.route("/api/pedidos/estado-ocr", methods=["GET"])
 def pedidos_estado_ocr():
-    cadena_respaldo = [f"{ocr_pedidos.MODELO_VISION_DEEPSEEK} (DeepSeek)"]
+    # 15/09: mismo fix que /api/estado-ocr — "respaldo" decía "DeepSeek"
+    # hardcodeado aunque la cascada real ya no lo usa (reemplazado por
+    # NVIDIA NIM).
+    cadena_respaldo = []
+    if ocr_pedidos.CLAVES_NVIDIA:
+        cadena_respaldo.append(f"{ocr_pedidos.MODELO_VISION_NVIDIA} (NVIDIA NIM)")
     if ocr_pedidos.clave_google:
         cadena_respaldo.append(f"{ocr_pedidos.MODELO_VISION} (Gemini)")
     if ocr_pedidos.clave_openrouter:
