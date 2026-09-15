@@ -344,6 +344,25 @@ def _reenviar_token_a_sso():
     return None
 
 
+# "NTP casero" por HTTP (15/09, a pedido explícito del usuario): la .23
+# tenía el reloj de Windows atrasado ~6 horas (W32Time deshabilitado, con
+# Type=NoSync) y el NTP real (UDP 123) no logra sincronizar solo ahí,
+# probablemente por firewall saliente — mientras eso no se resuelva de
+# fondo, esta máquina (.217, con la hora de Venezuela ya verificada
+# correcta) expone su hora actual por HTTP para que la .23 pueda
+# corregirse sola con una tarea programada que pegue acá y corra
+# Set-Date, sin depender del puerto UDP bloqueado.
+@app.route("/api/hora", methods=["GET"])
+def api_hora():
+    ahora = datetime.now()
+    return jsonify({
+        "iso": ahora.isoformat(),
+        "epoch": time.time(),
+        "texto": ahora.strftime("%Y-%m-%d %H:%M:%S"),
+        "zona_horaria": "America/Caracas (UTC-4) — hora de Venezuela, reloj de esta máquina (.217) ya verificado correcto",
+    })
+
+
 @app.route("/")
 def index():
     reenvio = _reenviar_token_a_sso()
