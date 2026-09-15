@@ -1082,16 +1082,45 @@ def pedidos_buscar_producto():
     return jsonify(resultado)
 
 
+# Vacía por defecto: esta máquina (.217) tiene la carpeta local real de
+# fotos, no necesita pedirle nada a nadie. En una máquina SIN esa carpeta
+# (ej. .23), configurar con la URL base de una máquina que sí la tenga —
+# ver pedidos_imagen_producto más abajo.
+IMAGENES_PRODUCTOS_FALLBACK_URL = os.environ.get("IMAGENES_PRODUCTOS_FALLBACK_URL", "").strip()
+
+
 @app.route("/api/pedidos/productos/imagen/<codigo>", methods=["GET"])
 def pedidos_imagen_producto(codigo):
     """Foto del producto para el preview al pasar el cursor en el
     buscador (11/09, a pedido explícito del usuario). Local, no depende
     de ningún CDN externo: bin/servir_imagen_producto.py busca el
-    archivo por código en la carpeta de 10.490 fotos ya existente."""
+    archivo por código en la carpeta de 10.490 fotos ya existente
+    (C:\\Users\\Personal\\Pictures\\Nueva carpeta\\productos, en ESTA
+    máquina).
+
+    15/09 (bug real reportado: "las imágenes... no me cargan" en la
+    migración a la .23): esa carpeta es local a esta máquina, nunca viajó
+    con el código (10.490 fotos, no es algo para versionar en git) — en
+    cualquier otra máquina buscar_imagen_producto() siempre da None. Con
+    IMAGENES_PRODUCTOS_FALLBACK_URL configurada (ej. apuntando a esta
+    misma máquina, .217, donde sí está la carpeta real), cuando no hay
+    foto local se la pide a esa URL en vez de devolver 404 directo —
+    mismo patrón que /api/hora para el reloj: la máquina que SÍ tiene el
+    recurso real lo sirve por HTTP para la que no lo tiene."""
     ruta = buscar_imagen_producto(codigo)
-    if not ruta:
-        return jsonify({"error": "Sin foto para este código"}), 404
-    return send_file(ruta)
+    if ruta:
+        return send_file(ruta)
+    if IMAGENES_PRODUCTOS_FALLBACK_URL:
+        try:
+            respuesta = requests.get(
+                f"{IMAGENES_PRODUCTOS_FALLBACK_URL.rstrip('/')}/api/pedidos/productos/imagen/{codigo}",
+                timeout=6,
+            )
+            if respuesta.ok:
+                return Response(respuesta.content, mimetype=respuesta.headers.get("Content-Type", "image/jpeg"))
+        except requests.RequestException:
+            pass
+    return jsonify({"error": "Sin foto para este código"}), 404
 
 
 @app.route("/api/pedidos/clientes/buscar", methods=["GET"])
